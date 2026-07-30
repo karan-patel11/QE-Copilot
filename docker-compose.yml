@@ -1,0 +1,194 @@
+# QE Copilot — local development stack.
+# Every service defines a healthcheck; app services wait for their dependencies
+# via `depends_on: condition: service_healthy`. Copy .env.example -> .env first.
+name: qe-copilot
+
+x-python-env: &python-env
+  SERVICE_NAME: qe-copilot
+  ENVIRONMENT: development
+  LOG_LEVEL: INFO
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: ${POSTGRES_USER:-qe_copilot}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qe_copilot}
+  POSTGRES_DB: ${POSTGRES_DB:-qe_copilot}
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+  MINIO_BUCKET: ${MINIO_BUCKET:-qe-copilot}
+  AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-dev-insecure-change-me}
+  AUTH_ISSUER: ${AUTH_ISSUER:-qe-copilot}
+  AUTH_AUDIENCE: ${AUTH_AUDIENCE:-qe-copilot-api}
+  AUTH_TOKEN_TTL_SECONDS: ${AUTH_TOKEN_TTL_SECONDS:-3600}
+  AUTH_DEV_MODE: ${AUTH_DEV_MODE:-true}
+  AUTH_DEV_ADMIN_EMAIL: ${AUTH_DEV_ADMIN_EMAIL:-admin@example.com}
+  AUTH_DEV_ORGANISATION_SLUG: ${AUTH_DEV_ORGANISATION_SLUG:-default}
+  CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:3100,http://127.0.0.1:3100}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-qe_copilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qe_copilot}
+      POSTGRES_DB: ${POSTGRES_DB:-qe_copilot}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-qe_copilot} -d ${POSTGRES_DB:-qe_copilot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # One-shot: apply database migrations, then exit. App services wait for this
+  # to complete successfully before starting.
+  migrate:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/python.Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    environment: *python-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/python.Dockerfile
+    command:
+      ["uvicorn", "qe_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: *python-env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  worker:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/python.Dockerfile
+    command:
+      ["celery", "-A", "qe_worker.celery_app:celery_app", "worker", "--loglevel=INFO"]
+    environment: *python-env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        ["CMD-SHELL", "celery -A qe_worker.celery_app:celery_app inspect ping -t 5 | grep -q pong"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/python.Dockerfile
+    command:
+      - "celery"
+      - "-A"
+      - "qe_scheduler.beat:celery_app"
+      - "beat"
+      - "--loglevel=INFO"
+      - "--pidfile=/tmp/celerybeat.pid"
+      - "--schedule=/tmp/celerybeat-schedule"
+    environment: *python-env
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/celerybeat.pid"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/web.Dockerfile
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "require('http').get('http://localhost:3000',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
