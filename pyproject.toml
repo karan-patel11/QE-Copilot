@@ -22,6 +22,8 @@ dependencies = [
     "pgvector==0.3.6",
     "redis==5.2.1",
     "celery==5.4.0",
+    "pyjwt==2.10.1",
+    "email-validator==2.2.0",
 ]
 
 [project.optional-dependencies]
@@ -94,7 +96,7 @@ mypy_path = [
     "apps/worker",
     "apps/scheduler",
     "apps/cli",
-    "tests",
+    ".",
 ]
 exclude = ["apps/web", "\\.venv", "migrations/versions"]
 
@@ -107,6 +109,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 pythonpath = [
+    ".",
     "packages/auth",
     "packages/common",
     "packages/database",

@@ -125,3 +125,13 @@ class ConflictError(AppError):
 class UnauthorizedError(AppError):
     code = ErrorCode.UNAUTHORIZED
     http_status = 401
+
+
+class ForbiddenError(AppError):
+    code = ErrorCode.FORBIDDEN
+    http_status = 403
+
+
+class ServiceUnavailableError(AppError):
+    code = ErrorCode.SERVICE_UNAVAILABLE
+    http_status = 503
