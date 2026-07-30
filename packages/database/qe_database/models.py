@@ -24,8 +24,14 @@ class Organisation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
 
-    users: Mapped[list[User]] = relationship(back_populates="organisation")
-    projects: Mapped[list[Project]] = relationship(back_populates="organisation")
+    # ``passive_deletes`` defers to the database's ON DELETE CASCADE instead of
+    # having the ORM load children and NULL out their (NOT NULL) foreign key.
+    users: Mapped[list[User]] = relationship(
+        back_populates="organisation", cascade="all, delete", passive_deletes=True
+    )
+    projects: Mapped[list[Project]] = relationship(
+        back_populates="organisation", cascade="all, delete", passive_deletes=True
+    )
 
 
 class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -76,7 +82,9 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(Text)
 
     organisation: Mapped[Organisation] = relationship(back_populates="projects")
-    repositories: Mapped[list[Repository]] = relationship(back_populates="project")
+    repositories: Mapped[list[Repository]] = relationship(
+        back_populates="project", cascade="all, delete", passive_deletes=True
+    )
 
     __table_args__ = (UniqueConstraint("organisation_id", "slug", name="uq_projects_org_slug"),)
 

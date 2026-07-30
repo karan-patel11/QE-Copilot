@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import uuid
-from typing import Generic, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -180,6 +180,46 @@ class ProjectUpdate(BaseModel):
     description: str | None = None
 
 
+# --------------------------------------------------------------------------- #
+# Repositories
+# --------------------------------------------------------------------------- #
+
+RepositoryProvider = Literal["github", "gitlab", "bitbucket", "azure_devops"]
+
+
+class RepositoryRead(BaseModel):
+    """A registered source repository."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    name: str
+    provider: str
+    url: str
+    default_branch: str
+    created_at: _dt.datetime
+    updated_at: _dt.datetime
+
+
+class RepositoryCreate(BaseModel):
+    """Register a repository under a project."""
+
+    name: str = Field(min_length=1, max_length=255)
+    url: str = Field(min_length=1, max_length=1024)
+    provider: RepositoryProvider = "github"
+    default_branch: str = Field(default="main", min_length=1, max_length=255)
+
+
+class RepositoryUpdate(BaseModel):
+    """Mutable repository attributes; omitted fields are left unchanged."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    url: str | None = Field(default=None, min_length=1, max_length=1024)
+    provider: RepositoryProvider | None = None
+    default_branch: str | None = Field(default=None, min_length=1, max_length=255)
+
+
 __all__ = [
     "DevLoginRequest",
     "MeResponse",
@@ -189,6 +229,9 @@ __all__ = [
     "ProjectCreate",
     "ProjectRead",
     "ProjectUpdate",
+    "RepositoryCreate",
+    "RepositoryRead",
+    "RepositoryUpdate",
     "RoleAssignment",
     "RoleRead",
     "TokenResponse",
