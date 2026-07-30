@@ -10,6 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from qe_api.routers import audit as audit_routes
 from qe_api.routers import auth as auth_routes
 from qe_api.routers import jobs as job_routes
 from qe_api.routers import organisations as organisation_routes
@@ -41,6 +42,7 @@ router.include_router(project_routes.router)
 router.include_router(repository_routes.project_router)
 router.include_router(repository_routes.router)
 router.include_router(job_routes.router)
+router.include_router(audit_routes.router)
 
 # The dev identity provider is mounted only when explicitly enabled, so it never
 # exists — not even in the OpenAPI document — in a non-dev deployment (ADR-0101).

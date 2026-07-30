@@ -45,6 +45,19 @@ async def commit_or_conflict(session: AsyncSession, message: str) -> None:
         raise ConflictError(message) from exc
 
 
+async def flush_or_conflict(session: AsyncSession, message: str) -> None:
+    """Flush pending changes, translating a constraint violation into a 409.
+
+    Used before staging an audit row so the entity's generated id is available
+    while both writes still share one transaction.
+    """
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise ConflictError(message) from exc
+
+
 async def commit_and_refresh(session: AsyncSession, instance: _Instance, message: str) -> _Instance:
     """Commit, then reload ``instance``.
 
@@ -63,5 +76,6 @@ __all__ = [
     "MAX_LIMIT",
     "commit_and_refresh",
     "commit_or_conflict",
+    "flush_or_conflict",
     "slugify",
 ]

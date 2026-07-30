@@ -15,9 +15,15 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from qe_api.services.audit import record_audit
 from qe_api.services.projects import get_project
-from qe_api.services.support import commit_and_refresh, commit_or_conflict
+from qe_api.services.support import (
+    commit_and_refresh,
+    commit_or_conflict,
+    flush_or_conflict,
+)
 from qe_auth import Permission, Principal
+from qe_common.audit import AuditAction, AuditEntity
 from qe_common.errors import JobNotFoundError, ServiceUnavailableError
 from qe_common.jobs import JobKind, JobState, assert_transition
 from qe_database.models import Job
@@ -53,6 +59,17 @@ async def create_job(
         payload=payload or {},
     )
     session.add(job)
+    await flush_or_conflict(session, "Job could not be created.")
+    # ``kind`` only: a payload can carry arbitrary caller data and the audit
+    # trail is not the place to duplicate it.
+    await record_audit(
+        session,
+        principal,
+        action=AuditAction.CREATE,
+        entity_type=AuditEntity.JOB,
+        entity_id=job.id,
+        changes={"kind": job.kind, "project_id": str(project_id) if project_id else None},
+    )
     await commit_or_conflict(session, "Job could not be created.")
 
     assert_transition(job.job_state, JobState.QUEUED)

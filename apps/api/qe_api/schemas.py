@@ -14,6 +14,7 @@ from typing import Any, Generic, Literal, TypeVar
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from qe_auth import Permission, Role, parse_role
+from qe_common.audit import AuditAction, AuditEntity
 from qe_common.jobs import JobKind, JobState, is_terminal
 from qe_database.models import User
 
@@ -263,7 +264,30 @@ class JobCreate(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+# --------------------------------------------------------------------------- #
+# Audit log
+# --------------------------------------------------------------------------- #
+
+
+class AuditLogRead(BaseModel):
+    """One immutable audit record."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    actor_user_id: uuid.UUID | None
+    actor_email: str | None
+    action: AuditAction
+    entity_type: AuditEntity
+    entity_id: uuid.UUID | None
+    request_id: str | None
+    changes: dict[str, Any] | None
+    created_at: _dt.datetime
+
+
 __all__ = [
+    "AuditLogRead",
     "DevLoginRequest",
     "JobCreate",
     "JobRead",

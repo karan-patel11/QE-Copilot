@@ -65,6 +65,16 @@ def bind_log_context(**fields: Any) -> None:
     _log_context.set(current)
 
 
+def current_log_context() -> dict[str, Any]:
+    """Return a copy of the fields bound to the current request/task.
+
+    Lets code deep in the call stack read correlation values (notably
+    ``request_id``) without every intermediate function taking them as a
+    parameter.
+    """
+    return _current_context()
+
+
 class JsonLogFormatter(logging.Formatter):
     """Render :class:`logging.LogRecord` instances as single-line JSON."""
 

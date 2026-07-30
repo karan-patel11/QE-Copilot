@@ -6,6 +6,7 @@ from qe_observability.logging import (
     LogContext,
     bind_log_context,
     configure_logging,
+    current_log_context,
     get_logger,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "LogContext",
     "bind_log_context",
     "configure_logging",
+    "current_log_context",
     "get_logger",
 ]

@@ -21,6 +21,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -164,7 +165,43 @@ class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         return JobState(self.state)
 
 
+class AuditLog(UUIDPrimaryKeyMixin, Base):
+    """An immutable record of one mutating action (ADR-0108).
+
+    No ``updated_at``: an audit row is never modified. The actor's email is
+    denormalised alongside the foreign key so the record still names who acted
+    after that user is deleted.
+    """
+
+    __tablename__ = "audit_logs"
+
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    actor_email: Mapped[str | None] = mapped_column(String(320))
+
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Deliberately not a foreign key: the row must outlive the entity it describes.
+    entity_id: Mapped[uuid.UUID | None] = mapped_column()
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    changes: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+    created_at: Mapped[_dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_audit_logs_organisation_id_created_at", "organisation_id", "created_at"),
+        Index("ix_audit_logs_entity", "entity_type", "entity_id"),
+    )
+
+
 __all__ = [
+    "AuditLog",
     "Job",
     "Organisation",
     "Project",

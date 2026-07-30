@@ -13,9 +13,15 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from qe_api.services.audit import record_audit
 from qe_api.services.projects import get_project
-from qe_api.services.support import commit_and_refresh, commit_or_conflict
+from qe_api.services.support import (
+    commit_and_refresh,
+    commit_or_conflict,
+    flush_or_conflict,
+)
 from qe_auth import Permission, Principal
+from qe_common.audit import AuditAction, AuditEntity
 from qe_common.errors import NotFoundError
 from qe_database.models import Project, Repository
 
@@ -92,6 +98,15 @@ async def create_repository(
         default_branch=default_branch,
     )
     session.add(repository)
+    await flush_or_conflict(session, "That repository URL is already registered on this project.")
+    await record_audit(
+        session,
+        principal,
+        action=AuditAction.CREATE,
+        entity_type=AuditEntity.REPOSITORY,
+        entity_id=repository.id,
+        changes={"project_id": str(project_id), "name": name, "url": url, "provider": provider},
+    )
     await commit_or_conflict(session, "That repository URL is already registered on this project.")
     return repository
 
@@ -109,14 +124,26 @@ async def update_repository(
     """Update mutable repository attributes."""
     principal.require(Permission.REPOSITORY_WRITE)
     repository = await get_repository(session, principal, repository_id)
-    if name is not None:
-        repository.name = name
-    if url is not None:
-        repository.url = url
-    if provider is not None:
-        repository.provider = provider
-    if default_branch is not None:
-        repository.default_branch = default_branch
+    changes: dict[str, object] = {}
+    for field, value in (
+        ("name", name),
+        ("url", url),
+        ("provider", provider),
+        ("default_branch", default_branch),
+    ):
+        if value is not None:
+            changes[field] = {"from": getattr(repository, field), "to": value}
+            setattr(repository, field, value)
+
+    await flush_or_conflict(session, "That repository URL is already registered on this project.")
+    await record_audit(
+        session,
+        principal,
+        action=AuditAction.UPDATE,
+        entity_type=AuditEntity.REPOSITORY,
+        entity_id=repository.id,
+        changes=changes,
+    )
     return await commit_and_refresh(
         session, repository, "That repository URL is already registered on this project."
     )
@@ -128,7 +155,17 @@ async def delete_repository(
     """Delete a repository. Returns the deleted row so callers can audit it."""
     principal.require(Permission.REPOSITORY_WRITE)
     repository = await get_repository(session, principal, repository_id)
+    snapshot = {"name": repository.name, "url": repository.url}
     await session.delete(repository)
+    await flush_or_conflict(session, "Repository could not be deleted.")
+    await record_audit(
+        session,
+        principal,
+        action=AuditAction.DELETE,
+        entity_type=AuditEntity.REPOSITORY,
+        entity_id=repository.id,
+        changes=snapshot,
+    )
     await commit_or_conflict(session, "Repository could not be deleted.")
     return repository
 

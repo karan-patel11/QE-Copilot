@@ -12,8 +12,10 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from qe_api.services.support import commit_and_refresh
+from qe_api.services.audit import record_audit
+from qe_api.services.support import commit_and_refresh, flush_or_conflict
 from qe_auth import Permission, Principal
+from qe_common.audit import AuditAction, AuditEntity
 from qe_common.errors import NotFoundError
 from qe_database.models import Organisation
 
@@ -47,8 +49,20 @@ async def update_organisation(
     """Rename the caller's organisation. The slug is immutable — it is an identifier."""
     principal.require(Permission.ORGANISATION_WRITE)
     org = await get_organisation(session, principal, organisation_id)
+    changes: dict[str, object] = {}
     if name is not None:
+        changes["name"] = {"from": org.name, "to": name}
         org.name = name
+
+    await flush_or_conflict(session, "Organisation could not be updated.")
+    await record_audit(
+        session,
+        principal,
+        action=AuditAction.UPDATE,
+        entity_type=AuditEntity.ORGANISATION,
+        entity_id=org.id,
+        changes=changes,
+    )
     return await commit_and_refresh(session, org, "Organisation could not be updated.")
 
 
