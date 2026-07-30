@@ -24,6 +24,11 @@ from qe_worker.celery_app import celery_app
 configure_logging()
 logger = get_logger("qe_worker.tasks")
 
+# Written by the beat-scheduled heartbeat, read by the System Health API.
+SCHEDULER_HEARTBEAT_KEY = "qe:scheduler:heartbeat"
+# Three missed minute-ticks before the scheduler reads as down.
+SCHEDULER_HEARTBEAT_TTL_SECONDS = 180
+
 
 def _now() -> _dt.datetime:
     return _dt.datetime.now(_dt.UTC)
@@ -115,6 +120,26 @@ def run_job(job_id: str) -> dict[str, Any]:
         return {"job_id": job_id, "state": job.state, "claimed": True}
 
 
+@celery_app.task(name="qe_worker.scheduler_heartbeat")  # type: ignore[misc]
+def scheduler_heartbeat() -> dict[str, str]:
+    """Stamp a short-lived Redis key that System Health reads as scheduler liveness.
+
+    The tick is *scheduled* by beat and *executed* here, so a fresh key proves
+    both processes are alive. If the key goes stale, the health API reports the
+    scheduler as degraded — and reports worker liveness separately, so the two
+    causes stay distinguishable.
+    """
+    import redis
+
+    from qe_common.config import get_settings
+
+    stamped_at = _now().isoformat()
+    with redis.Redis.from_url(get_settings().redis_url) as client:
+        client.set(SCHEDULER_HEARTBEAT_KEY, stamped_at, ex=SCHEDULER_HEARTBEAT_TTL_SECONDS)
+    logger.info("scheduler heartbeat stamped", extra={"event_type": "scheduler.heartbeat"})
+    return {"heartbeat_at": stamped_at}
+
+
 @celery_app.task(name="qe_worker.health_check")  # type: ignore[misc]
 def health_check() -> dict[str, Any]:
     """Unpersisted liveness probe for the worker process itself.
@@ -128,4 +153,10 @@ def health_check() -> dict[str, Any]:
     return {"status": "ok", "state": JobState.COMPLETED.value}
 
 
-__all__ = ["health_check", "run_job"]
+__all__ = [
+    "SCHEDULER_HEARTBEAT_KEY",
+    "SCHEDULER_HEARTBEAT_TTL_SECONDS",
+    "health_check",
+    "run_job",
+    "scheduler_heartbeat",
+]

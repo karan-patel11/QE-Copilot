@@ -26,6 +26,7 @@ x-python-env: &python-env
   AUTH_DEV_MODE: ${AUTH_DEV_MODE:-true}
   AUTH_DEV_ADMIN_EMAIL: ${AUTH_DEV_ADMIN_EMAIL:-admin@example.com}
   AUTH_DEV_ORGANISATION_SLUG: ${AUTH_DEV_ORGANISATION_SLUG:-default}
+  CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:3100,http://127.0.0.1:3100}
 
 services:
   postgres:

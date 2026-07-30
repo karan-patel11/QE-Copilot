@@ -15,6 +15,9 @@ from starlette.responses import JSONResponse
 
 from qe_common.config import get_settings
 from qe_database.session import get_async_engine
+from qe_observability import get_logger
+
+logger = get_logger("qe_api.health")
 
 router = APIRouter(tags=["health"])
 
@@ -26,12 +29,18 @@ async def healthz() -> dict[str, str]:
 
 
 async def _check_database() -> bool:
+    """Whether Postgres answers. Probes must not raise, but must not go quiet
+    either: the reason is logged so a failing readiness check is diagnosable."""
     try:
         engine = get_async_engine()
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         return True
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            f"readiness: database unreachable: {exc}",
+            extra={"event_type": "readiness.database_down"},
+        )
         return False
 
 
@@ -42,7 +51,11 @@ async def _check_redis() -> bool:
     )
     try:
         return bool(await client.ping())
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            f"readiness: redis unreachable: {exc}",
+            extra={"event_type": "readiness.redis_down"},
+        )
         return False
     finally:
         await client.aclose()

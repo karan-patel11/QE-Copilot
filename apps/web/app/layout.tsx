@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
-import { Sidebar } from "@/components/Sidebar";
+import { AuthGate } from "@/components/AuthGate";
+import { AuthProvider } from "@/lib/auth";
 
 import "./globals.css";
 
@@ -15,10 +16,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-white text-gray-900 antialiased">
-        <div className="flex h-screen">
-          <Sidebar />
-          <main className="flex-1 overflow-auto p-8">{children}</main>
-        </div>
+        {/* Every route renders inside the gate, so no page has to remember to
+            check for a session of its own. */}
+        <AuthProvider>
+          <AuthGate>{children}</AuthGate>
+        </AuthProvider>
       </body>
     </html>
   );

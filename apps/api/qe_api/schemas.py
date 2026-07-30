@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from qe_auth import Permission, Role, parse_role
 from qe_common.audit import AuditAction, AuditEntity
+from qe_common.health import HealthStatus
 from qe_common.jobs import JobKind, JobState, is_terminal
 from qe_database.models import User
 
@@ -286,8 +287,35 @@ class AuditLogRead(BaseModel):
     created_at: _dt.datetime
 
 
+# --------------------------------------------------------------------------- #
+# System health
+# --------------------------------------------------------------------------- #
+
+
+class ComponentHealth(BaseModel):
+    """Live status of one runtime component."""
+
+    status: HealthStatus
+    detail: str | None = Field(default=None, description="Why, when not healthy.")
+    metrics: dict[str, Any] = Field(
+        default_factory=dict, description="Component-specific measurements."
+    )
+
+
+class SystemHealthResponse(BaseModel):
+    """The System Health page's payload — measured per request, never cached."""
+
+    status: HealthStatus = Field(description="Worst component status.")
+    checked_at: _dt.datetime
+    components: dict[str, ComponentHealth]
+    jobs: dict[str, int] = Field(
+        default_factory=dict, description="Job counts by state for the caller's organisation."
+    )
+
+
 __all__ = [
     "AuditLogRead",
+    "ComponentHealth",
     "DevLoginRequest",
     "JobCreate",
     "JobRead",
@@ -303,6 +331,7 @@ __all__ = [
     "RepositoryUpdate",
     "RoleAssignment",
     "RoleRead",
+    "SystemHealthResponse",
     "TokenResponse",
     "UserCreate",
     "UserRead",

@@ -78,9 +78,42 @@ jobs:
   frontend:
     name: Frontend (lint, type, build, e2e)
     runs-on: ubuntu-latest
+    # The e2e suite signs in and reads live System Health, so it needs a real
+    # API backed by real Postgres and Redis — not a mock.
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: qe_copilot
+      POSTGRES_PASSWORD: qe_copilot
+      POSTGRES_DB: qe_copilot
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
     defaults:
       run:
         working-directory: apps/web
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: qe_copilot
+          POSTGRES_PASSWORD: qe_copilot
+          POSTGRES_DB: qe_copilot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qe_copilot -d qe_copilot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -89,6 +122,11 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
 
       - name: Install dependencies
         run: npm ci
@@ -102,10 +140,28 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Install backend and apply migrations
+        working-directory: .
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          alembic upgrade head
+
+      - name: Start API and worker
+        working-directory: .
+        run: |
+          uvicorn qe_api.main:app --host 127.0.0.1 --port 8000 &
+          celery -A qe_worker.celery_app:celery_app worker --loglevel=INFO &
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8000/healthz && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8000/healthz
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
-      - name: Smoke test (Playwright)
+      - name: End-to-end tests (Playwright)
         run: npm run test:e2e
 
   secret-scan:

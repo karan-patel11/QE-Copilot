@@ -60,6 +60,23 @@ class Settings(BaseSettings):
     auth_dev_admin_email: str = Field(default="admin@example.com", alias="AUTH_DEV_ADMIN_EMAIL")
     auth_dev_organisation_slug: str = Field(default="default", alias="AUTH_DEV_ORGANISATION_SLUG")
 
+    # Browser origins allowed to call the API. Comma-separated; never "*", since
+    # requests carry an Authorization header. The default covers local
+    # development (:3000) and the Playwright server (:3100); any deployment
+    # beyond localhost must set this explicitly.
+    cors_allow_origins: str = Field(
+        default=(
+            "http://localhost:3000,http://127.0.0.1:3000,"
+            "http://localhost:3100,http://127.0.0.1:3100"
+        ),
+        alias="CORS_ALLOW_ORIGINS",
+    )
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """``cors_allow_origins`` parsed into a list, blanks dropped."""
+        return [origin.strip() for origin in self.cors_allow_origins.split(",") if origin.strip()]
+
     @model_validator(mode="after")
     def _reject_insecure_prod(self) -> Self:
         """Fail fast rather than run production on a dev identity provider."""
