@@ -34,8 +34,13 @@ def test_log_fields_constant_matches_spec() -> None:
 
 def test_every_record_has_all_fields() -> None:
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname=__file__, lineno=1,
-        msg="hello", args=(), exc_info=None,
+        name="test",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="hello",
+        args=(),
+        exc_info=None,
     )
     payload = _format(record)
     assert MANDATED_FIELDS.issubset(payload.keys())
@@ -46,8 +51,13 @@ def test_every_record_has_all_fields() -> None:
 def test_context_fields_are_merged() -> None:
     bind_log_context(request_id="r1", user_id="u1", project_id="p1", trace_id="t1")
     record = logging.LogRecord(
-        name="test", level=logging.WARNING, pathname=__file__, lineno=1,
-        msg="ctx", args=(), exc_info=None,
+        name="test",
+        level=logging.WARNING,
+        pathname=__file__,
+        lineno=1,
+        msg="ctx",
+        args=(),
+        exc_info=None,
     )
     payload = _format(record)
     assert payload["request_id"] == "r1"

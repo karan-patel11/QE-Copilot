@@ -72,9 +72,7 @@ class JsonLogFormatter(logging.Formatter):
         settings = get_settings()
         ctx = _current_context()
         payload: dict[str, Any] = {
-            "timestamp": _dt.datetime.fromtimestamp(
-                record.created, tz=_dt.UTC
-            ).isoformat(),
+            "timestamp": _dt.datetime.fromtimestamp(record.created, tz=_dt.UTC).isoformat(),
             "service": getattr(record, "service", settings.service_name),
             "environment": settings.environment,
             "severity": record.levelname,

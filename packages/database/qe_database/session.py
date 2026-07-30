@@ -30,9 +30,7 @@ def get_engine() -> Engine:
 @lru_cache(maxsize=1)
 def get_async_engine() -> AsyncEngine:
     """Return the process-wide async engine (used by the API)."""
-    return create_async_engine(
-        get_settings().async_database_url, pool_pre_ping=True, future=True
-    )
+    return create_async_engine(get_settings().async_database_url, pool_pre_ping=True, future=True)
 
 
 @lru_cache(maxsize=1)
@@ -42,9 +40,7 @@ def _sync_session_factory() -> sessionmaker[Session]:
 
 @lru_cache(maxsize=1)
 def _async_session_factory() -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(
-        bind=get_async_engine(), expire_on_commit=False, class_=AsyncSession
-    )
+    return async_sessionmaker(bind=get_async_engine(), expire_on_commit=False, class_=AsyncSession)
 
 
 def get_session() -> Iterator[Session]:

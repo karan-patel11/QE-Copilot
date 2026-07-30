@@ -42,9 +42,7 @@ def test_correlation_id_echoed(client: TestClient) -> None:
     assert resp.headers.get("X-Request-ID")
 
 
-def test_readyz_503_when_deps_down(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_readyz_503_when_deps_down(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     async def _down() -> bool:
         return False
 

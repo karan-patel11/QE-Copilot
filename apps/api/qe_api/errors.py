@@ -51,9 +51,7 @@ async def _http_exception_handler(request: Request, exc: StarletteHTTPException)
         429: ErrorCode.RATE_LIMITED,
         503: ErrorCode.SERVICE_UNAVAILABLE,
     }.get(exc.status_code, ErrorCode.INTERNAL_ERROR)
-    body = ErrorResponse(
-        error=ErrorBody(code=code, message=str(exc.detail), request_id=request_id)
-    )
+    body = ErrorResponse(error=ErrorBody(code=code, message=str(exc.detail), request_id=request_id))
     return _render(body, exc.status_code)
 
 

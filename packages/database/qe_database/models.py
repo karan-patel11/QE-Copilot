@@ -39,9 +39,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
 
     organisation: Mapped[Organisation] = relationship(back_populates="users")
-    roles: Mapped[list[Role]] = relationship(
-        secondary="user_roles", back_populates="users"
-    )
+    roles: Mapped[list[Role]] = relationship(secondary="user_roles", back_populates="users")
 
 
 class Role(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -50,9 +48,7 @@ class Role(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column(Text)
 
-    users: Mapped[list[User]] = relationship(
-        secondary="user_roles", back_populates="roles"
-    )
+    users: Mapped[list[User]] = relationship(secondary="user_roles", back_populates="roles")
 
 
 class UserRole(Base):
@@ -82,9 +78,7 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     organisation: Mapped[Organisation] = relationship(back_populates="projects")
     repositories: Mapped[list[Repository]] = relationship(back_populates="project")
 
-    __table_args__ = (
-        UniqueConstraint("organisation_id", "slug", name="uq_projects_org_slug"),
-    )
+    __table_args__ = (UniqueConstraint("organisation_id", "slug", name="uq_projects_org_slug"),)
 
 
 class Repository(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -100,9 +94,7 @@ class Repository(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     project: Mapped[Project] = relationship(back_populates="repositories")
 
-    __table_args__ = (
-        UniqueConstraint("project_id", "url", name="uq_repositories_project_url"),
-    )
+    __table_args__ = (UniqueConstraint("project_id", "url", name="uq_repositories_project_url"),)
 
 
 __all__ = [
