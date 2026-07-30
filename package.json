@@ -1,0 +1,14 @@
+{
+  "name": "qe-copilot",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AI-Powered Test Generation and Defect Triage Platform (monorepo root)",
+  "scripts": {
+    "web:dev": "npm --prefix apps/web run dev",
+    "web:build": "npm --prefix apps/web run build",
+    "web:lint": "npm --prefix apps/web run lint",
+    "web:typecheck": "npm --prefix apps/web run typecheck",
+    "web:test:e2e": "npm --prefix apps/web run test:e2e",
+    "web:install": "npm --prefix apps/web install"
+  }
+}
