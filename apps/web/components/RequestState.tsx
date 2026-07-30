@@ -9,6 +9,7 @@ export function LoadingState({ label }: { label: string }) {
     <div
       role="status"
       aria-busy="true"
+      data-testid="loading-state"
       className="rounded-lg border border-gray-200 p-8 text-sm text-gray-500"
     >
       Loading {label}…
@@ -26,6 +27,7 @@ export function ErrorState({
   return (
     <div
       role="alert"
+      data-testid="error-state"
       className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-800"
     >
       <p className="font-medium">Something went wrong</p>
@@ -45,7 +47,10 @@ export function ErrorState({
 
 export function EmptyState({ message }: { message: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-gray-300 p-8 text-sm text-gray-500">
+    <div
+      data-testid="empty-state"
+      className="rounded-lg border border-dashed border-gray-300 p-8 text-sm text-gray-500"
+    >
       {message}
     </div>
   );
