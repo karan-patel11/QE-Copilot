@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import datetime as _dt
 import uuid
-from typing import Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from qe_auth import Permission, Role, parse_role
+from qe_common.jobs import JobKind, JobState, is_terminal
 from qe_database.models import User
 
 T = TypeVar("T")
@@ -220,8 +221,52 @@ class RepositoryUpdate(BaseModel):
     default_branch: str | None = Field(default=None, min_length=1, max_length=255)
 
 
+# --------------------------------------------------------------------------- #
+# Jobs
+# --------------------------------------------------------------------------- #
+
+
+class JobRead(BaseModel):
+    """A job record — this is what the polling endpoint returns."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    project_id: uuid.UUID | None
+    created_by: uuid.UUID | None
+    kind: str
+    state: JobState
+    payload: dict[str, Any]
+    result: dict[str, Any] | None
+    error: str | None
+    attempts: int
+    queued_at: _dt.datetime | None
+    started_at: _dt.datetime | None
+    finished_at: _dt.datetime | None
+    created_at: _dt.datetime
+    updated_at: _dt.datetime
+
+    @property
+    def is_terminal(self) -> bool:
+        """Whether the job has reached a final state and will not change again."""
+        return is_terminal(self.state)
+
+
+class JobCreate(BaseModel):
+    """Request a unit of asynchronous work."""
+
+    kind: JobKind = Field(description="The kind of work to run.")
+    project_id: uuid.UUID | None = Field(
+        default=None, description="Optional project the job belongs to."
+    )
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
 __all__ = [
     "DevLoginRequest",
+    "JobCreate",
+    "JobRead",
     "MeResponse",
     "OrganisationRead",
     "OrganisationUpdate",

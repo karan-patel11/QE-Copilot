@@ -1,18 +1,31 @@
-"""Baseline ORM models — the six Phase 0 foundation tables.
+"""ORM models.
 
-Only the tables required to bootstrap tenancy, identity, RBAC, and project/repo
-registration exist in Phase 0. Every later-phase table (jobs, test_suites,
-defects, knowledge_documents, evaluations, embeddings, ...) is intentionally
-absent and tracked as ``TODO(phase-N)`` in the design.
+Phase 0 established tenancy, identity, RBAC, and project/repository
+registration. Phase 1 adds the tables the core platform runs on: ``jobs`` (the
+asynchronous work record) and ``audit_logs``. Feature tables (test_suites,
+defects, knowledge_documents, evaluations, embeddings, ...) remain deferred and
+are tracked as ``TODO(phase-N)`` in the design.
 """
 
 from __future__ import annotations
 
+import datetime as _dt
 import uuid
+from typing import Any
 
-from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from qe_common.jobs import JobState
 from qe_database.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
@@ -105,7 +118,54 @@ class Repository(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("project_id", "url", name="uq_repositories_project_url"),)
 
 
+class Job(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """An asynchronous unit of work.
+
+    The row is the authoritative record of a job's state: the API writes
+    ``PENDING`` then ``QUEUED``, and the worker owns every transition after
+    that, so polling this table always reflects reality rather than what the
+    broker last reported (ADR-0107).
+    """
+
+    __tablename__ = "jobs"
+
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organisations.id", ondelete="CASCADE"), nullable=False
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    # Kept when the user is deleted: an audit trail must outlive its actor.
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False, default=JobState.PENDING.value)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(Text)
+
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    celery_task_id: Mapped[str | None] = mapped_column(String(155))
+    queued_at: Mapped[_dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[_dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[_dt.datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_jobs_organisation_id_created_at", "organisation_id", "created_at"),
+        Index("ix_jobs_state", "state"),
+        Index("ix_jobs_project_id", "project_id"),
+    )
+
+    @property
+    def job_state(self) -> JobState:
+        """The ``state`` column as its enum value."""
+        return JobState(self.state)
+
+
 __all__ = [
+    "Job",
     "Organisation",
     "Project",
     "Repository",

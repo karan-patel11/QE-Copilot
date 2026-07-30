@@ -135,3 +135,15 @@ class ForbiddenError(AppError):
 class ServiceUnavailableError(AppError):
     code = ErrorCode.SERVICE_UNAVAILABLE
     http_status = 503
+
+
+class JobNotFoundError(AppError):
+    code = ErrorCode.JOB_NOT_FOUND
+    http_status = 404
+
+
+class JobInvalidStateError(AppError):
+    """A transition the job state machine does not permit."""
+
+    code = ErrorCode.JOB_INVALID_STATE
+    http_status = 409

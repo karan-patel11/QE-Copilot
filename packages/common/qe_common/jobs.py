@@ -1,17 +1,16 @@
-"""Job domain model and state machine.
+"""Job vocabulary and state machine.
 
-Shared by the worker, scheduler, and API (single source of truth). Phase 0 has
-no persistence for jobs — the ``jobs`` table is ``TODO(phase-1)`` — and no real
-job logic; this defines the vocabulary the later phases build on.
+Shared by the API, the worker, and the scheduler — one source of truth for what
+states exist and which transitions are legal. Persistence lives in
+:class:`qe_database.models.Job`; this module stays free of ORM imports so the
+rules can be reasoned about, and unit-tested, on their own.
 """
 
 from __future__ import annotations
 
-import datetime as _dt
-import uuid
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from qe_common.errors import JobInvalidStateError
 
 
 class JobState(StrEnum):
@@ -29,6 +28,20 @@ class JobState(StrEnum):
     TIMED_OUT = "TIMED_OUT"
 
 
+class JobKind(StrEnum):
+    """Job types the platform can execute.
+
+    Phase 1 ships one real, persisted kind. Feature kinds arrive with the
+    features themselves rather than as placeholders that would accept work the
+    worker cannot actually do.
+    """
+
+    HEALTH_CHECK = "health_check"
+    # TODO(phase-3): KNOWLEDGE_INGESTION
+    # TODO(phase-4): TEST_GENERATION
+    # TODO(phase-5): DEFECT_TRIAGE
+
+
 # Terminal states: a job in one of these never transitions again.
 TERMINAL_STATES: frozenset[JobState] = frozenset(
     {
@@ -40,8 +53,8 @@ TERMINAL_STATES: frozenset[JobState] = frozenset(
     }
 )
 
-# Allowed forward transitions. Enforced by validators in a later phase; declared
-# now so the state machine is documented and testable from Phase 0.
+# Allowed forward transitions, enforced by :func:`assert_transition` in both the
+# API and the worker.
 ALLOWED_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
     JobState.PENDING: frozenset({JobState.QUEUED, JobState.CANCELLED}),
     JobState.QUEUED: frozenset({JobState.RUNNING, JobState.CANCELLED, JobState.TIMED_OUT}),
@@ -81,20 +94,23 @@ def can_transition(current: JobState, target: JobState) -> bool:
     return target in ALLOWED_TRANSITIONS.get(current, frozenset())
 
 
-class Job(BaseModel):
-    """In-memory job representation. TODO(phase-1): back this with the jobs table."""
+def assert_transition(current: JobState, target: JobState) -> None:
+    """Raise :class:`JobInvalidStateError` unless the transition is permitted."""
+    if not can_transition(current, target):
+        raise JobInvalidStateError(f"A job cannot move from {current.value} to {target.value}.")
 
-    id: uuid.UUID = Field(default_factory=uuid.uuid4)
-    kind: str = Field(description="Job type discriminator, e.g. 'health_check'.")
-    state: JobState = JobState.PENDING
-    created_at: _dt.datetime = Field(default_factory=lambda: _dt.datetime.now(_dt.UTC))
-    payload: dict[str, object] = Field(default_factory=dict)
+
+def is_terminal(state: JobState) -> bool:
+    """Whether ``state`` is final."""
+    return state in TERMINAL_STATES
 
 
 __all__ = [
     "ALLOWED_TRANSITIONS",
     "TERMINAL_STATES",
-    "Job",
+    "JobKind",
     "JobState",
+    "assert_transition",
     "can_transition",
+    "is_terminal",
 ]
