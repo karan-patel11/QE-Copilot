@@ -8,11 +8,17 @@
 > need, under the Phase 0/1 conventions already in the codebase. They are a
 > decision, not a transcription.
 >
-> **Recorded contradiction.** Phase 1's task brief cited **§15.8** for
-> `audit_logs`; Phase 2's brief cites **§15.8** for `model_runs`. Both cannot be
-> §15.8. `audit_logs` already exists at migration `0004` and is in production
-> use, so it keeps its table; `model_runs` is created here as its own table. The
-> section number is treated as unreliable, not the tables.
+> **Retracted contradiction (corrected).** An earlier revision of this ADR
+> claimed §15.8 was self-contradictory because Phase 1's brief cited it for
+> `audit_logs` and Phase 2's cites it for `model_runs`. **That was wrong.** Both
+> tables are specified as separate tables under the same subsection; there is no
+> collision. The outcome is unchanged — `audit_logs` keeps its table from
+> migration `0004`, `model_runs` is created here as its own — but it follows from
+> the design, not from treating a section number as unreliable.
+>
+> Source of that correction: maintainer statement, **not** yet verified against
+> `docs/architecture/design-spec.md`, which is still absent. Re-confirm during
+> the source-verification pass.
 
 ## Context
 
