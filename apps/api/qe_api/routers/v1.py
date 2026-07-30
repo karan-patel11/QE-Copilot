@@ -11,6 +11,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from qe_api.routers import auth as auth_routes
+from qe_api.routers import users as user_routes
 from qe_common.config import get_settings
 
 router = APIRouter(prefix="/api/v1", tags=["v1"])
@@ -29,6 +30,8 @@ async def ping() -> PingResponse:
 
 
 router.include_router(auth_routes.router)
+router.include_router(user_routes.router)
+router.include_router(user_routes.roles_router)
 
 # The dev identity provider is mounted only when explicitly enabled, so it never
 # exists — not even in the OpenAPI document — in a non-dev deployment (ADR-0101).

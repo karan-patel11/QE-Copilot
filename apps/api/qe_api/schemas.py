@@ -9,11 +9,24 @@ from __future__ import annotations
 
 import datetime as _dt
 import uuid
+from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from qe_auth import Permission, Role, parse_role
 from qe_database.models import User
+
+T = TypeVar("T")
+
+
+class Page(BaseModel, Generic[T]):
+    """One page of a collection, plus the unfiltered total."""
+
+    items: list[T]
+    total: int = Field(description="Total rows matching the query, ignoring paging.")
+    limit: int
+    offset: int
+
 
 # --------------------------------------------------------------------------- #
 # Auth
@@ -75,9 +88,52 @@ class MeResponse(BaseModel):
     permissions: list[Permission]
 
 
+# --------------------------------------------------------------------------- #
+# Users & roles
+# --------------------------------------------------------------------------- #
+
+
+class UserCreate(BaseModel):
+    """New user in the caller's organisation."""
+
+    email: EmailStr
+    full_name: str | None = Field(default=None, max_length=255)
+    roles: list[Role] = Field(
+        default_factory=list, description="Requires the role:assign permission."
+    )
+
+
+class UserUpdate(BaseModel):
+    """Mutable user attributes; omitted fields are left unchanged."""
+
+    full_name: str | None = Field(default=None, max_length=255)
+    is_active: bool | None = None
+
+
+class RoleAssignment(BaseModel):
+    """The complete replacement role set for a user."""
+
+    roles: list[Role]
+
+
+class RoleRead(BaseModel):
+    """An assignable role."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    description: str | None
+
+
 __all__ = [
     "DevLoginRequest",
     "MeResponse",
+    "Page",
+    "RoleAssignment",
+    "RoleRead",
     "TokenResponse",
+    "UserCreate",
     "UserRead",
+    "UserUpdate",
 ]
