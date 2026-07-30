@@ -60,6 +60,17 @@ AI/LLM calls, RAG/knowledge base, test generation, CI ingestion, defect triage.
   the API never confirms that another tenant's resource exists. Per-project
   membership (a `project_members` table) is *not* part of the design's table list
   and is deferred rather than invented.
+- **ADR-0111 — Organisation lifecycle:** the organisation *is* the tenant
+  boundary, so it cannot be created or destroyed from inside a tenant-scoped
+  request — the creating principal would have no way to reach the new tenant, and
+  deleting your own tenant deletes your own account. The API therefore exposes
+  read + rename of the caller's own organisation; provisioning and removal are
+  operator actions in the CLI (`qe org create|list|delete`), which connects with
+  database credentials rather than as a principal.
+- **ADR-0112 — Slug immutability:** `organisations.slug` and `projects.slug` are
+  identifiers, not display names. Create derives a slug from the name when one is
+  not supplied; update changes `name`/`description` only, so URLs and external
+  references stay stable.
 - **ADR-0107 — Job dispatch:** the API persists a job row, transitions it to
   `QUEUED`, then dispatches `qe_worker.run_job(job_id)` over the existing Celery/
   Redis broker. The worker owns every subsequent transition and writes each one to

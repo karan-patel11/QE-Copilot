@@ -126,10 +126,69 @@ class RoleRead(BaseModel):
     description: str | None
 
 
+# --------------------------------------------------------------------------- #
+# Organisations & projects
+# --------------------------------------------------------------------------- #
+
+
+class OrganisationRead(BaseModel):
+    """A tenant."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    created_at: _dt.datetime
+    updated_at: _dt.datetime
+
+
+class OrganisationUpdate(BaseModel):
+    """Mutable organisation attributes. The slug is an identifier and immutable."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class ProjectRead(BaseModel):
+    """A project."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    name: str
+    slug: str
+    description: str | None
+    created_at: _dt.datetime
+    updated_at: _dt.datetime
+
+
+class ProjectCreate(BaseModel):
+    """New project in the caller's organisation."""
+
+    name: str = Field(min_length=1, max_length=255)
+    slug: str | None = Field(
+        default=None, max_length=255, description="Derived from name if unset."
+    )
+    description: str | None = None
+
+
+class ProjectUpdate(BaseModel):
+    """Mutable project attributes; omitted fields are left unchanged."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+
+
 __all__ = [
     "DevLoginRequest",
     "MeResponse",
+    "OrganisationRead",
+    "OrganisationUpdate",
     "Page",
+    "ProjectCreate",
+    "ProjectRead",
+    "ProjectUpdate",
     "RoleAssignment",
     "RoleRead",
     "TokenResponse",
