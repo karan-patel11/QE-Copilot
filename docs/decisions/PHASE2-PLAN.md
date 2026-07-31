@@ -4,22 +4,35 @@ Builds on the verified Phase 0/1 foundation (auth, RBAC, organisations/projects,
 repositories, Celery+Redis job framework, audit logging, system health, Next.js
 shell). Migrations at `0004`; `make check` green at the start of this phase.
 
-## Design-authority caveat (read first)
+## Design-authority note (read first)
 
-`docs/architecture/` contains only `.gitkeep`. **The spec cited as the design
-authority for this phase — §7.1, §13.2, §15.6, §16.3, §18, §19, §22, §23, §26.6,
-§30, §39 — is not in this repository and was not available to read.**
+`docs/architecture/design-spec.md` **is in this repository and is readable** —
+3,155 lines, added in `94a2acd`. Every section this phase cites — §7.1, §11.5,
+§12.2, §13.2, §14, §15.6, §15.8, §16.3, §18, §19, §22, §23, §26.6, §30, §32,
+§37, §38, §39 — is present and has been read directly.
 
-Per the Phase 2 rule ("where it is silent or contradicts itself, YOU decide and
-write an ADR — never silently assume"), every `§` reference is treated as
-maximally silent: each decision is **derived** from Phase 0/1 conventions plus
-mainstream defaults, and recorded in an ADR that says so. Nothing below is
-transcribed from a spec.
+**This section previously said the opposite**: that `docs/architecture/` held
+only `.gitkeep`, that the spec "was not available to read", and that every `§`
+reference was therefore *derived* rather than transcribed. That was accurate when
+written (`46a3f45`) and became false the moment the spec landed. It then went
+uncorrected across the eight commits `94a2acd`–`aa23f1b` — including `efd65cc`,
+whose own subject line is "N1 correction — verified against design-spec.md", the
+pass that read the spec and corrected ADR-0201 through ADR-0206 while leaving
+this section claiming the spec did not exist.
 
-One contradiction is recorded explicitly: Phase 1's brief cited **§15.8** for
-`audit_logs`, Phase 2's cites **§15.8** for `model_runs`. Both cannot hold —
-`audit_logs` keeps its existing table (migration `0004`), `model_runs` gets its
-own (ADR-0203).
+Consequence for readers: **an ADR's own status line is the authority on whether
+it was checked against the spec — not this section.** ADR-0201–ADR-0206 carry
+"corrected/verified against `docs/architecture/design-spec.md` (N0.5)";
+ADR-0207–ADR-0210 were written after the spec landed and cite it directly. Any
+claim below that a decision is "derived" or "an inference" must be re-read
+against the spec before it is relied on, because a decision derived under the
+old caveat may now have a sourced answer.
+
+The §15.8 contradiction this section used to record — Phase 1 citing §15.8 for
+`audit_logs` while Phase 2 cited §15.8 for `model_runs`, "both cannot hold" — is
+**retracted** (ADR-0203, commit `26ec81d`). §15.8 "AI Governance Tables" contains
+both tables: `model_runs` at L1527 and `audit_logs` at L1575. Both citations were
+correct all along.
 
 ## Architecture Decision Records
 
