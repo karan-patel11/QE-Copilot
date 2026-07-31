@@ -268,6 +268,69 @@ def test_a_provider_failure_mid_pipeline_keeps_earlier_rows(
     assert request_row.job_state is JobState.FAILED
 
 
+def test_a_failure_between_stages_leaves_exactly_the_completed_calls(
+    db: Session,
+    seeded_prompts: None,
+    request_row: TestGenerationRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failure *between* stages: two calls made, two rows, no third row.
+
+    Distinct from ``test_a_provider_failure_mid_pipeline_keeps_earlier_rows``
+    above, and the distinction matters. There, the third *call* is attempted and
+    fails, so ADR-0209 requires a row for it — three rows. Here the pipeline dies
+    after test_plan returns and before test_generation calls the provider at all,
+    so there is no third call to record and exactly two rows survive.
+
+    Anyone reading "a mid-pipeline failure leaves N rows" needs to know which of
+    these two shapes they are looking at, which is why both exist.
+
+    This is also the shape N6 and N10 will hit in production: a stage that raises
+    on its own inputs — an unpairable response, a config contradiction, an
+    exhausted cost ceiling — rather than a provider that errors.
+    """
+    import qe_test_generation.pipeline as pipeline
+
+    async def _abort(*_: object, **__: object) -> None:
+        raise RuntimeError("test_generation stage aborted before any provider call")
+
+    monkeypatch.setattr(pipeline, "generate_cases", _abort)
+
+    provider = MockProvider(
+        responses=STAGE_RESPONSES, recorder=CommittingModelRunRecorder(_session)
+    )
+    with pytest.raises(RuntimeError, match="aborted before any provider call"):
+        run_generation(_session, request_row.id, provider=provider)
+
+    # Every assertion below is a direct query, not application-reported state.
+    runs = list(
+        db.scalars(
+            select(ModelRun)
+            .where(ModelRun.request_id == request_row.id)
+            .order_by(ModelRun.created_at)
+        )
+    )
+    assert len(runs) == 2, "only the two completed calls should have rows"
+    assert [r.operation for r in runs] == ["requirement_decomposition", "test_plan"]
+    assert [r.status for r in runs] == ["SUCCEEDED", "SUCCEEDED"]
+    assert provider.call_count == 2, "the third stage must not have reached the provider"
+
+    cases = db.scalar(
+        select(func.count())
+        .select_from(GeneratedTestCase)
+        .where(GeneratedTestCase.request_id == request_row.id)
+    )
+    assert cases == 0
+
+    status, error = db.execute(
+        select(TestGenerationRequest.status, TestGenerationRequest.error).where(
+            TestGenerationRequest.id == request_row.id
+        )
+    ).one()
+    assert status == JobState.FAILED.value
+    assert error is not None and "aborted before any provider call" in error
+
+
 def test_an_unseeded_registry_fails_before_any_provider_call(
     db: Session, request_row: TestGenerationRequest
 ) -> None:
