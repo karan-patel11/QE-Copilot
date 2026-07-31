@@ -21,7 +21,16 @@ SOURCE_ROOTS = (REPO_ROOT / "packages", REPO_ROOT / "apps")
 #: Only this package may import a vendor SDK (§18 L1766, §37 L2745).
 GATEWAY_PACKAGE = REPO_ROOT / "packages" / "ai_gateway"
 
-VENDOR_MODULES = {"anthropic", "openai", "cohere", "mistralai", "google"}
+VENDOR_MODULES = {"groq", "anthropic", "openai", "cohere", "mistralai", "google"}
+
+#: The SDK the gateway is allowed to import (ADR-0210). ``anthropic`` stays in
+#: VENDOR_MODULES above so its reintroduction anywhere fails loudly.
+CURRENT_VENDOR_SDK = "groq"
+
+#: Removed by ADR-0210. Checked as *uninstallable*, not merely unimported — an
+#: unused-but-present dependency still ships, still needs patching, and would let
+#: an import of it silently start working again.
+REMOVED_VENDOR_SDKS = ("anthropic",)
 
 
 def _python_files() -> list[pathlib.Path]:
@@ -90,18 +99,19 @@ def test_prompt_registry_does_not_import_the_gateway() -> None:
 
 
 def test_gateway_package_import_does_not_pull_in_the_vendor_sdk() -> None:
-    """``import qe_ai_gateway`` must not drag in ``anthropic``.
+    """``import qe_ai_gateway`` must not drag in ``groq``.
 
     The deterministic tier runs on MockProvider with no credential; if importing
     the package pulled in the SDK, that tier would depend on a vendor library it
     never calls. Checked in a fresh interpreter because another test in this
-    process may already have imported ``anthropic``.
+    process may already have imported ``groq``.
     """
     result = subprocess.run(
         [
             sys.executable,
             "-c",
-            "import sys; import qe_ai_gateway; " "sys.exit(1 if 'anthropic' in sys.modules else 0)",
+            "import sys; import qe_ai_gateway; "
+            f"sys.exit(1 if {CURRENT_VENDOR_SDK!r} in sys.modules else 0)",
         ],
         cwd=REPO_ROOT,
         capture_output=True,
@@ -109,9 +119,31 @@ def test_gateway_package_import_does_not_pull_in_the_vendor_sdk() -> None:
         check=False,
     )
     assert result.returncode == 0, (
-        "importing qe_ai_gateway pulled in the anthropic SDK.\n"
+        f"importing qe_ai_gateway pulled in the {CURRENT_VENDOR_SDK} SDK.\n"
         f"stdout={result.stdout}\nstderr={result.stderr}"
     )
+
+
+@pytest.mark.parametrize("sdk", REMOVED_VENDOR_SDKS)
+def test_removed_vendor_sdk_is_gone_from_the_dependency_tree(sdk: str) -> None:
+    """A replaced SDK must be uninstalled, not just unimported (ADR-0210).
+
+    Leaving it installed keeps it in the shipped image and its CVE surface, and
+    lets a stray ``import anthropic`` start working again with nothing failing.
+    """
+    declared = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert f'"{sdk}==' not in declared, f"{sdk} is still declared in pyproject.toml"
+
+    result = subprocess.run(
+        [sys.executable, "-c", f"import {sdk}"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (
+        result.returncode != 0
+    ), f"{sdk} is still importable — it must be uninstalled, not merely unused."
 
 
 @pytest.mark.parametrize("module", ["qe_ai_gateway", "qe_prompt_registry"])

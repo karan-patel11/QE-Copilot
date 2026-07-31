@@ -25,9 +25,10 @@ _MILLION = decimal.Decimal(1_000_000)
 class ModelRates:
     """Per-million-token rates in USD for one model.
 
-    Cache reads and cache writes are billed at their own rates rather than at
-    the input rate: reads are far cheaper, writes carry a premium. Folding
-    either into ``input`` would misprice every cached call.
+    The four classes are **disjoint** — :func:`estimate_cost` sums them
+    independently. Adapters are responsible for expressing their vendor's usage
+    in those terms; Groq reports cached tokens *inside* its prompt total, so its
+    adapter subtracts before populating :class:`TokenUsage` (ADR-0210 §2).
     """
 
     input_per_mtok: decimal.Decimal
@@ -36,27 +37,41 @@ class ModelRates:
     cache_write_per_mtok: decimal.Decimal
 
 
-def _rates(input_usd: str, output_usd: str) -> ModelRates:
-    """Build rates from published input/output prices.
+def _rates(input_usd: str, output_usd: str, cached_input_usd: str | None = None) -> ModelRates:
+    """Build rates from published prices (ADR-0210, groq.com/pricing).
 
-    Cache multipliers are the standard ones: reads at 0.1x input, 5-minute-TTL
-    writes at 1.25x input.
+    ``cached_input_usd`` defaults to the full input rate when Groq publishes no
+    cached price for the model. Assuming the 50% discount the gpt-oss models get
+    would *understate* cost; assuming none can only overstate it, and overstating
+    is the safe direction for a budget ceiling (ADR-0208).
+
+    Cache **writes** are $0 on every model: Groq provides prompt caching at no
+    additional cost, and has no cache-creation token class at all.
     """
     base_input = decimal.Decimal(input_usd)
     return ModelRates(
         input_per_mtok=base_input,
         output_per_mtok=decimal.Decimal(output_usd),
-        cache_read_per_mtok=base_input * decimal.Decimal("0.1"),
-        cache_write_per_mtok=base_input * decimal.Decimal("1.25"),
+        cache_read_per_mtok=(
+            decimal.Decimal(cached_input_usd) if cached_input_usd is not None else base_input
+        ),
+        cache_write_per_mtok=decimal.Decimal(0),
     )
 
 
-#: Known models. A model absent from this table is a cost-estimation failure,
-#: not a silent zero — see :func:`estimate_cost`.
+#: Known models, per **million** tokens in USD.
+#: Source: https://groq.com/pricing retrieved 2026-07-31 (ADR-0210 Decision 4).
+#: A model absent from this table is a cost-estimation failure, not a silent
+#: zero — see :func:`estimate_cost`.
 RATE_TABLE: dict[str, ModelRates] = {
-    "claude-opus-5": _rates("5.00", "25.00"),
-    "claude-sonnet-5": _rates("3.00", "15.00"),
-    "claude-haiku-4-5": _rates("1.00", "5.00"),
+    # Strict structured output (constrained decoding) — the default.
+    "openai/gpt-oss-120b": _rates("0.15", "0.60", "0.075"),
+    "openai/gpt-oss-20b": _rates("0.075", "0.30", "0.0375"),
+    "moonshotai/kimi-k2-instruct-0905": _rates("1.00", "3.00", "0.50"),
+    # No cached-input price published for these; see _rates docstring.
+    "llama-3.3-70b-versatile": _rates("0.59", "0.79"),
+    "llama-3.1-8b-instant": _rates("0.05", "0.08"),
+    "qwen/qwen3.6-27b": _rates("0.60", "3.00"),
     # The mock bills nothing; it makes no provider call. Present so the
     # deterministic tier exercises the same code path as a real adapter.
     "mock-model": ModelRates(

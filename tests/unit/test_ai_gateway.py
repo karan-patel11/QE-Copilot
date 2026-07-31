@@ -269,31 +269,69 @@ async def test_a_swallowed_exception_cannot_erase_the_row() -> None:
 # --- cost and token accounting ---------------------------------------------
 
 
-def test_cost_sums_all_four_token_classes() -> None:
-    """Cached tokens bill at their own rates — omitting them misprices the call."""
+def test_cost_sums_all_token_classes() -> None:
+    """Each class bills at its own rate; folding any into input misprices the call.
+
+    gpt-oss-120b (groq.com/pricing, ADR-0210): in $0.15, cached in $0.075,
+    out $0.60, cache write $0 per MTok. With 1M of each class:
+        1.00*0.15 + 1.00*0.60 + 1.00*0.075 + 1.00*0 = 0.825000
+    """
     usage = TokenUsage(
         input_tokens=1_000_000,
         output_tokens=1_000_000,
         cache_read_input_tokens=1_000_000,
         cache_creation_input_tokens=1_000_000,
     )
-    # opus-5: $5 in, $25 out, cache read 0.1x input = $0.50, write 1.25x = $6.25
-    assert estimate_cost("claude-opus-5", usage) == decimal.Decimal("36.750000")
+    assert estimate_cost("openai/gpt-oss-120b", usage) == decimal.Decimal("0.825000")
 
 
 def test_cost_of_a_realistic_call() -> None:
+    """1200 in / 800 out on the default model.
+
+    1200/1e6*0.15 = 0.000180 ; 800/1e6*0.60 = 0.000480 ; total 0.000660
+    """
     usage = TokenUsage(input_tokens=1_200, output_tokens=800)
-    # 1200/1e6*5 = 0.006 ; 800/1e6*25 = 0.020
-    assert estimate_cost("claude-opus-5", usage) == decimal.Decimal("0.026000")
+    assert estimate_cost("openai/gpt-oss-120b", usage) == decimal.Decimal("0.000660")
+
+
+def test_cached_tokens_bill_at_half_the_input_rate() -> None:
+    """Groq's published cached-input discount for the gpt-oss models is 50%.
+
+    100k uncached + 900k cached + 0 out:
+        100000/1e6*0.15   = 0.015000
+        900000/1e6*0.075  = 0.067500  -> 0.082500
+    Billing all 1M at full input rate would be 0.150000, so the discount is real
+    and the disjoint split is what makes it computable.
+    """
+    usage = TokenUsage(input_tokens=100_000, cache_read_input_tokens=900_000)
+    assert estimate_cost("openai/gpt-oss-120b", usage) == decimal.Decimal("0.082500")
+
+
+def test_models_without_published_cache_pricing_get_no_discount() -> None:
+    """Assuming a discount would understate cost; assuming none can only overstate.
+
+    llama-3.3-70b-versatile: in $0.59, no cached price published -> cache read
+    also $0.59. 500k uncached + 500k cached:
+        500000/1e6*0.59 + 500000/1e6*0.59 = 0.295000 + 0.295000 = 0.590000
+    """
+    usage = TokenUsage(input_tokens=500_000, cache_read_input_tokens=500_000)
+    assert estimate_cost("llama-3.3-70b-versatile", usage) == decimal.Decimal("0.590000")
+
+
+def test_cache_writes_are_free_on_every_model() -> None:
+    """Groq provides prompt caching at no additional cost (ADR-0210 §4)."""
+    for model in ("openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"):
+        usage = TokenUsage(cache_creation_input_tokens=10_000_000)
+        assert estimate_cost(model, usage) == decimal.Decimal("0.000000"), model
 
 
 def test_cost_is_zero_when_no_tokens_were_used() -> None:
-    assert estimate_cost("claude-opus-5", TokenUsage()) == decimal.Decimal("0.000000")
+    assert estimate_cost("openai/gpt-oss-120b", TokenUsage()) == decimal.Decimal("0.000000")
 
 
 def test_cost_is_quantised_to_the_column_scale() -> None:
     """model_runs.estimated_cost is NUMERIC(12, 6)."""
-    cost = estimate_cost("claude-opus-5", TokenUsage(input_tokens=1))
+    cost = estimate_cost("openai/gpt-oss-120b", TokenUsage(input_tokens=1))
     assert cost.as_tuple().exponent == -6
 
 

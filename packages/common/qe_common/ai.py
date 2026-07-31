@@ -18,7 +18,7 @@ class ProviderName(StrEnum):
     a row that cannot say which provider produced it is not an audit record.
     """
 
-    ANTHROPIC = "anthropic"
+    GROQ = "groq"
     MOCK = "mock"
 
 

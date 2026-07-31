@@ -2,7 +2,9 @@
 
 Supersedes the Phase 0 ``AIGateway`` stub, whose ``complete()`` / sync
 ``embed(text)`` shape did not match §18 (ADR-0201). The interfaces here are
-§18 L1732-1748 verbatim.
+§18 L1732-1748 verbatim. The concrete provider is Groq (ADR-0210, replacing the
+Anthropic adapter ADR-0201 originally inferred); nothing outside
+:mod:`qe_ai_gateway.groq_provider` knows that.
 
 Owns ``model_runs``. Deliberately does **not** import
 :mod:`qe_prompt_registry` and never queries ``prompt_versions``: it receives
@@ -59,7 +61,7 @@ __all__ = [
     "estimate_cost",
 ]
 
-# ``AnthropicProvider`` is intentionally NOT re-exported here: importing this
-# package must not pull in the vendor SDK, so the deterministic tier runs even
-# with ``anthropic`` uninstalled. Import it explicitly where it is used:
-#     from qe_ai_gateway.anthropic_provider import AnthropicProvider
+# ``GroqProvider`` is intentionally NOT re-exported here: importing this package
+# must not pull in the vendor SDK, so the deterministic tier runs even with
+# ``groq`` uninstalled. Import it explicitly where it is used:
+#     from qe_ai_gateway.groq_provider import GroqProvider
