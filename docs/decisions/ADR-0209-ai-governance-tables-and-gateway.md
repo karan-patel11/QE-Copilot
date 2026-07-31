@@ -10,7 +10,7 @@
 |---|---|
 | `prompt_versions` columns | §15.8 L1542–1551 |
 | `model_runs` columns | §15.8 L1527–1540 |
-| `model_runs.prompt_version_id` references `prompt_versions` | §15.8 L1533 |
+| `model_runs.prompt_version_id` exists as a column — **no type, no FK stated** | §15.8 L1533 |
 | Gateway interface signatures | §18 L1732–1748 |
 | Thirteen gateway responsibilities | §18 L1750–1764 |
 | Domain modules call the gateway, not a provider SDK | §18 L1766 |
@@ -386,7 +386,14 @@ not match §18. ADR-0201 supersedes it; N3 replaces it.
 | `qe_observability` | `get_logger`, `bind_log_context`, `LogContext` |
 | `qe_common` | `get_settings` / `Settings`, the shared `StrEnum` vocabularies |
 
-### Table ownership — no cross-module DB queries (§12.2)
+### Table ownership — no cross-module DB queries (design decision, stricter than §12.2)
+
+§12.2 L1110 states: "Modules must not directly **modify** another module's
+database records through uncontrolled queries." The rule adopted here is
+stricter — **no cross-module queries at all, read or write.** That is a **design
+decision for this modular monolith, not a literal spec requirement**, and it is
+labelled as ours so a future reader does not go hunting for spec text forbidding
+cross-module *reads* and fail to find it.
 
 | Table | Owner | Everyone else |
 |---|---|---|

@@ -32,9 +32,12 @@ Phase 0 and Phase 1 established a suite that is fully deterministic: `make check
 runs it on every commit and a red result always means a real defect. Introducing
 a language model threatens that property in three ways:
 
-1. **Non-determinism.** The same prompt can produce different valid output. On
-   `claude-opus-5` there is no `temperature=0` escape hatch — sampling parameters
-   are rejected outright (400), so output variance cannot be dialled down.
+1. **Non-determinism.** The same prompt can produce different valid output.
+   *(Provider-specific detail, superseded by ADR-0210: written when the adapter
+   was `claude-opus-5`, which rejects sampling parameters outright with a 400, so
+   variance could not be dialled down at all. Groq accepts them. The conclusion is
+   unchanged — a sampling parameter narrows variance, it does not make a language
+   model deterministic — so the deterministic tier still runs on `MockProvider`.)*
 2. **Network dependence.** A provider outage or rate limit would turn an
    unrelated commit red.
 3. **Cost.** A suite that calls a paid API on every push bills every push.
@@ -86,8 +89,10 @@ tolerances rather than equality:
 - **Marked `pytest.mark.evaluation` and deselected in the default CI job.** Run
   deliberately — before a prompt version change, before a model change, on a
   schedule — not on every push.
-- **Skipped, not failed, when `ANTHROPIC_API_KEY` is absent**, so a contributor
-  without a key gets a green local run rather than a misleading red one.
+- **Skipped, not failed, when `GROQ_API_KEY` is absent**, so a contributor
+  without a key gets a green local run rather than a misleading red one. The key
+  name follows the provider: ADR-0210 replaced Anthropic with Groq, and
+  `Settings.groq_api_key` reads `GROQ_API_KEY`.
 
 ### Flakiness policy
 

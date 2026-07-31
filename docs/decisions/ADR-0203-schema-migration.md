@@ -102,10 +102,13 @@ Spec columns, kept verbatim: `id`, `provider`, `model`, `operation`,
 `prompt_version_id`, `input_token_count`, `output_token_count`, `latency_ms`,
 `estimated_cost`, `status`, `error_code`, `created_at`.
 
-- `prompt_version_id` is specified as a reference to `prompt_versions`
-  (§15.8 L1542). That table is deferred to the P1 prompt-versioning work
-  (ADR-0202), so in Phase 2 the column holds the version **string** and is not
-  yet a foreign key. Recorded as a known, forward-compatible shortfall.
+- `prompt_version_id` is listed by §15.8 L1533 as a bare column name: **the spec
+  states no type and no foreign key for it.** `String(64)` holding the version
+  identifier is therefore a choice filling a gap the spec leaves open — not a
+  divergence from a stated spec position, and not a shortfall to be made good
+  later. (The `prompt_versions` table itself is §15.8 L1542; ADR-0202 deferred it
+  to P1, and ADR-0209 subsequently built it in Phase 2.) What the choice does
+  create is an operational hazard, and that hazard is real:
 
   > **Hazard for N3/N4.** The column is named `_id` but holds a `String(64)`,
   > not a UUID. Anything writing it must write the prompt *version identifier*
@@ -115,9 +118,12 @@ Spec columns, kept verbatim: `id`, `provider`, `model`, `operation`,
   > were never registry identifiers will not map. N3 and N4 must therefore take
   > this value straight from the prompt registry rather than constructing it.
 - Immutable: written once, no `updated_at` — matching `audit_logs`.
-- **No prompt or response text is stored.** §15.8 lists none, and §26.5
-  sensitive-data redaction argues against duplicating requirement text into a
-  second table.
+- **No prompt or response text is stored.** §15.8 lists none — that part is
+  sourced. Keeping it that way also keeps requirement text out of a second table,
+  which is *an inference from §26.5's intent rather than a rule it states*:
+  §26.5 specifies detection and redaction of secrets and PII and says nothing
+  about duplicating data across tables. The smaller redaction surface is our
+  reasoning.
 
 Additions (derived): `organisation_id`, `project_id`, `job_id`, `request_id`
 (attribution and cost roll-up), `cache_read_input_tokens` /
@@ -201,5 +207,9 @@ picks them up deliberately, alongside the `audit_logs` drift noted earlier.
   which is which without re-reading the spec.
 - N2's artifact is corrected, re-gated, and consistent with the ORM: N3–N5 can
   be built against it.
-- One knowing divergence from spec typing remains — `prompt_version_id` as a
-  string — and it is now flagged where the code that writes it will be read.
+- `prompt_version_id` as a `String(64)` is **not** a divergence from the spec —
+  §15.8 L1533 states no type and no FK, so there is no spec position to diverge
+  from. The operational hazard is unchanged and stands: only registry-sourced
+  version strings resolve, and a free-form label written here could not be mapped
+  by a future foreign-key backfill. It is flagged where the code that writes it
+  will be read, and ADR-0209 Decision 5 is the boundary that contains it.

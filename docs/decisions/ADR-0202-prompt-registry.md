@@ -11,7 +11,7 @@
 | No production deploy without evaluation | §19 L1789 |
 | Seven-stage prompt lifecycle | §19 L1791–1807 |
 | `prompt_versions` **table** | §15.8 L1542–1551 |
-| `model_runs.prompt_version_id` references it | §15.8 L1533 |
+| `model_runs.prompt_version_id` exists as a column — **no type, no FK stated** | §15.8 L1533 |
 | Prompt registry is part of the AI stack | §10.3 L594 |
 | **Prompt versioning is P1** | §39 L2907 |
 

@@ -91,7 +91,11 @@ distinguishes them, and security constraints in particular drive the security
 test cases §11.5 L864 offers as a config option. Merged, they are unrecoverable.
 
 **Persist all ten now.** Rejected as above — not in §15.6, and it duplicates
-requirement text into a second location, which §26.5 argues against.
+requirement text into a second location. *(Inference from §26.5's intent, not a
+rule it states: §26.5 specifies detection and redaction of secrets and PII and
+says nothing about duplicating data across tables. Keeping the number of places
+requirement text lives small follows from that intent — it is our reasoning, not
+the spec's requirement.)*
 
 ## Consequences
 
