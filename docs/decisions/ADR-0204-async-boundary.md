@@ -1,11 +1,21 @@
 # ADR-0204 — Sync/async boundary: generation is a worker job, never a blocking endpoint
 
-**Status:** Accepted (Phase 2, N1)
+**Status:** Accepted (Phase 2, N1) — **verified against `docs/architecture/design-spec.md` (N0.5)**
 
-> **Derivation note.** The spec cited as §13.2 (async lifecycle) and §30 (latency
-> targets) is not in this repository. The <90s generation target quoted in the
-> Phase 2 brief is taken as given; the boundary decision below is derived from it
-> plus the job framework Phase 1 actually shipped.
+## Sources
+
+| Claim | Spec |
+|---|---|
+| Test generation is an asynchronous request | §13.2 L1152–1154 |
+| API returns a job id; worker claims and processes | §13.2 L1161–1179 |
+| Job states | §14 L1187–1197 |
+| Test-generation job completed within 90 seconds | §30 L2378 |
+| Endpoint paths | §16.3 L1623–1631 |
+
+§13.2 L1161–1179 specifies the exact flow this ADR adopts:
+`Client → API validates request → Database job created → Queue message published
+→ API returns job ID → Worker claims job → Worker processes job → Worker stores
+result → Frontend receives status update`.
 
 ## Context
 
@@ -34,22 +44,39 @@ A synchronous `POST /test-generation` that blocked until completion would:
 **Generation is an asynchronous worker job. There is no blocking generation
 endpoint.**
 
-- `POST /api/v1/test-generation` **validates input, persists a
+- `POST /api/v1/test-generation/requests` **validates input, persists a
   `test_generation_requests` row, creates a Phase 1 job, and returns `202
   Accepted`** with the request record and its `job_id`. It performs no provider
   call.
 - The worker claims the job (`QUEUED → RUNNING`, `SELECT … FOR UPDATE`, idempotent
   on redelivery) and runs the pipeline: decompose → generate → validate → persist
   cases → terminal state.
-- The client polls `GET /api/v1/test-generation/{id}` (or the generic
-  `GET /api/v1/jobs/{job_id}`) until `status` is terminal. Both read the
+- The client polls `GET /api/v1/test-generation/requests/{request_id}` (or the
+  generic `GET /api/v1/jobs/{job_id}`) until `status` is terminal. Both read the
   authoritative database row, not broker state.
+- **Endpoint paths are taken from §16.3 L1623–1631**, under the `/api/v1` prefix
+  Phase 0 established. An earlier revision of this ADR used
+  `POST /api/v1/test-generation` and `GET /api/v1/test-generation/{id}`, which
+  did not match the spec; corrected. The full set:
+
+  ```http
+  POST /api/v1/test-generation/requests
+  GET  /api/v1/test-generation/requests/{request_id}
+  GET  /api/v1/test-generation/requests/{request_id}/tests
+  POST /api/v1/generated-tests/{test_id}/approve
+  POST /api/v1/generated-tests/{test_id}/reject
+  POST /api/v1/generated-tests/{test_id}/regenerate
+  POST /api/v1/generated-tests/{test_id}/validate
+  ```
 - **One state machine.** `test_generation_requests.status` mirrors
   `qe_common.jobs.JobState` and every transition is validated by the existing
   `assert_transition`. Phase 2 introduces no second lifecycle vocabulary.
 - **Review actions stay synchronous.** Approve, reject, and validate are fast
   database operations and return `200` directly. Only *regenerate* creates a new
-  job, because only regenerate calls the provider.
+  job, because only regenerate calls the provider. *(Inference: §16.3 lists all
+  four as `POST` endpoints but does not state which are synchronous. §13.2 L1152
+  makes "Test generation" asynchronous, which covers regenerate; the other three
+  touch no provider, so §13.1 synchronous handling applies.)*
 
 ### Where the <90s target is measured
 

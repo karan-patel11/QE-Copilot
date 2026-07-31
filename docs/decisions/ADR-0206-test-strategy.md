@@ -1,6 +1,30 @@
 # ADR-0206 — Test strategy: deterministic on MockProvider, evals tolerance-based and CI-skipped
 
-**Status:** Accepted (Phase 2, N1)
+**Status:** Accepted (Phase 2, N1) — **verified against `docs/architecture/design-spec.md` (N0.5)**
+
+## Sources
+
+The first revision of this ADR cited no section. §32 does exist and is cited now.
+
+| Claim | Spec |
+|---|---|
+| Unit-test coverage incl. schema validation, prompt assembly, permission checks | §32.1 L2419–2427 |
+| Integration-test coverage incl. **AI-provider adapter** | §32.2 L2431–2440 |
+| Contract tests incl. **AI structured outputs** | §32.3 L2444–2450 |
+| End-to-end flow: log in → upload requirement → generate → approve | §32.4 L2456–2459 |
+| AI evaluation tests use **fixed datasets**; measure test-code validity | §32.5 L2468–2479 |
+| Security tests incl. prompt injection, secret leakage, unsafe generated-code execution | §32.6 L2483–2493 |
+| Unit and integration tests are **P0** | §39 L2898 |
+
+The three-tier structure below maps onto §32 directly: tier 1 covers §32.1/§32.2,
+tier 2 is §32.3's "AI structured outputs", tier 3 is §32.5.
+
+**Marked as inference — `design-spec.md` is silent on all of these:** the use of
+a `MockProvider` as the substitute in tiers 1–2, excluding the evaluation tier
+from the default CI job, tolerance-based rather than exact-match assertions, and
+the three-consecutive-clean-runs flakiness gate. §32 specifies *what* to cover,
+not *how* to keep it deterministic. These are engineering decisions, not sourced
+facts.
 
 ## Context
 
