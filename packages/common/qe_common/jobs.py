@@ -37,8 +37,9 @@ class JobKind(StrEnum):
     """
 
     HEALTH_CHECK = "health_check"
+    #: §22 test generation, executed by :mod:`qe_test_generation` (ADR-0204).
+    TEST_GENERATION = "test_generation"
     # TODO(phase-3): KNOWLEDGE_INGESTION
-    # TODO(phase-4): TEST_GENERATION
     # TODO(phase-5): DEFECT_TRIAGE
 
 

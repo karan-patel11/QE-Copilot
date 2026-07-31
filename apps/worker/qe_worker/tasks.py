@@ -15,10 +15,13 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from qe_ai_gateway import CommittingModelRunRecorder
+from qe_ai_gateway.base import LanguageModelProvider
 from qe_common.jobs import JobKind, JobState, assert_transition
 from qe_database.models import Job
 from qe_database.session import get_engine
 from qe_observability import bind_log_context, configure_logging, get_logger
+from qe_test_generation import run_generation
 from qe_worker.celery_app import celery_app
 
 configure_logging()
@@ -44,12 +47,53 @@ def _handle_health_check(job: Job) -> dict[str, Any]:
     }
 
 
+def _session_factory() -> Session:
+    """A fresh session on its own pooled connection.
+
+    Passed to the pipeline and to the metering recorder, both of which own
+    transaction boundaries this task must not share (ADR-0211 Decision 2).
+    """
+    return Session(get_engine(), expire_on_commit=False)
+
+
+def _build_provider() -> LanguageModelProvider:
+    """The configured provider, metering into its own transactions.
+
+    ``GroqProvider`` is imported here rather than at module scope because
+    importing it pulls in the vendor SDK; the deterministic tier must be able to
+    import this module without ``groq`` installed (ADR-0206, ADR-0210).
+    """
+    from qe_ai_gateway.groq_provider import GroqProvider
+
+    return GroqProvider(recorder=CommittingModelRunRecorder(_session_factory))
+
+
+def _handle_test_generation(job: Job) -> dict[str, Any]:
+    """§22 test generation (ADR-0204, ADR-0211).
+
+    The sync/async bridge is inside ``run_generation`` — exactly one event loop
+    per generation — so this handler stays an ordinary synchronous function like
+    every other one.
+    """
+    payload = job.payload or {}
+    raw_request_id = payload.get("request_id")
+    if not raw_request_id:
+        raise ValueError("A test_generation job requires 'request_id' in its payload.")
+
+    outcome = run_generation(
+        _session_factory,
+        uuid.UUID(str(raw_request_id)),
+        provider=_build_provider(),
+    )
+    return outcome.as_dict()
+
+
 # One handler per executable kind. A kind with no handler fails the job loudly
 # rather than silently completing with nothing done.
 _HANDLERS: dict[str, Callable[[Job], dict[str, Any]]] = {
     JobKind.HEALTH_CHECK.value: _handle_health_check,
-    # TODO(phase-3): knowledge ingestion  TODO(phase-4): test generation
-    # TODO(phase-5): defect triage
+    JobKind.TEST_GENERATION.value: _handle_test_generation,
+    # TODO(phase-3): knowledge ingestion  TODO(phase-5): defect triage
 }
 
 

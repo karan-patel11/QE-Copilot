@@ -48,8 +48,15 @@ class ErrorCode(StrEnum):
     PROMPT_VERSION_FORMAT_INVALID = "PROMPT_VERSION_FORMAT_INVALID"
     PROMPT_TEMPLATE_DRIFT = "PROMPT_TEMPLATE_DRIFT"
 
+    # Prompt rendering (ADR-0211)
+    PROMPT_RENDER_FAILED = "PROMPT_RENDER_FAILED"
+
+    # Test generation (ADR-0205, ADR-0208, ADR-0211)
+    TEST_CONFIG_INVALID = "TEST_CONFIG_INVALID"
+    TEST_CONFIG_UNSUPPORTED = "TEST_CONFIG_UNSUPPORTED"
+    TEST_GENERATION_FAILED = "TEST_GENERATION_FAILED"
+
     # TODO(phase-3): RAG / knowledge-base error codes
-    # TODO(phase-4): test-generation error codes
     # TODO(phase-5): defect-triage error codes
 
 
@@ -231,6 +238,44 @@ class PromptVersionFormatError(AppError):
 
     code = ErrorCode.PROMPT_VERSION_FORMAT_INVALID
     http_status = 422
+
+
+class PromptRenderError(AppError):
+    """A template variable was missing at render time.
+
+    Raised rather than rendering the section empty: a prompt with a silently
+    blank requirement block still produces confident-looking output, which is
+    the worst available failure mode (ADR-0202).
+    """
+
+    code = ErrorCode.PROMPT_RENDER_FAILED
+    http_status = 500
+
+
+class TestConfigInvalidError(AppError):
+    """The generator configuration is malformed or out of range (ADR-0208)."""
+
+    code = ErrorCode.TEST_CONFIG_INVALID
+    http_status = 422
+
+
+class TestConfigUnsupportedError(AppError):
+    """A configuration option this phase cannot honour was requested.
+
+    Phase 2's one case is ``include_accessibility_cases``: accepting it and
+    returning ordinary tests would label them as covering accessibility when
+    they do not, so the request is refused instead (ADR-0208).
+    """
+
+    code = ErrorCode.TEST_CONFIG_UNSUPPORTED
+    http_status = 422
+
+
+class TestGenerationError(AppError):
+    """The generation pipeline could not complete (ADR-0211)."""
+
+    code = ErrorCode.TEST_GENERATION_FAILED
+    http_status = 500
 
 
 class PromptTemplateDriftError(AppError):

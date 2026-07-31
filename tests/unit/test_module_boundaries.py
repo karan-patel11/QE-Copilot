@@ -1,9 +1,14 @@
-"""N3+N4 unit: the module boundaries ADR-0209 claims are mechanically checkable.
+"""N3+N4+N5 unit: the module boundaries the ADRs claim are mechanically checkable.
 
-§37 L2745 forbids provider calls outside the gateway and §12.2 forbids one
-module querying another's tables. Both are the kind of rule that decays silently
-unless something fails when it is broken, so it is asserted here rather than
-left as prose in an ADR.
+§37 L2745 forbids provider calls outside the gateway. ADR-0209 Decision 5 adds a
+stricter no-cross-module-queries rule as *our* design decision — §12.2 L1110's
+own words forbid modules *modifying* another module's records through
+uncontrolled queries, and this codebase declines cross-module reads too.
+
+ADR-0211 Decision 1 adds a third: exactly one event loop per generation.
+
+All of these decay silently unless something fails when they are broken, so they
+are asserted here rather than left as prose in an ADR.
 """
 
 from __future__ import annotations
@@ -146,6 +151,74 @@ def test_removed_vendor_sdk_is_gone_from_the_dependency_tree(sdk: str) -> None:
     ), f"{sdk} is still importable — it must be uninstalled, not merely unused."
 
 
-@pytest.mark.parametrize("module", ["qe_ai_gateway", "qe_prompt_registry"])
+@pytest.mark.parametrize("module", ["qe_ai_gateway", "qe_prompt_registry", "qe_test_generation"])
 def test_packages_import_cleanly(module: str) -> None:
     __import__(module)
+
+
+# --- ADR-0211 Decision 1: one event loop per generation ---------------------
+
+TEST_GENERATION_PACKAGE = REPO_ROOT / "packages" / "test_generation"
+
+#: Every way of standing up or entering an event loop. A second one anywhere in
+#: this package would mean a provider call ran on its own loop.
+_LOOP_ENTRY_POINTS = {
+    ("asyncio", "run"),
+    ("asyncio", "new_event_loop"),
+    ("asyncio", "set_event_loop"),
+    ("asyncio", "get_event_loop"),
+    ("loop", "run_until_complete"),
+}
+
+#: The one module allowed to open a loop — the documented bridge.
+_BRIDGE_MODULE = "pipeline.py"
+
+
+def _loop_entry_calls(path: pathlib.Path) -> list[str]:
+    """Dotted names of any event-loop entry points called in ``path``."""
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        owner = node.func.value
+        if isinstance(owner, ast.Name) and (owner.id, node.func.attr) in _LOOP_ENTRY_POINTS:
+            found.append(f"{owner.id}.{node.func.attr}")
+    return found
+
+
+def test_exactly_one_event_loop_is_opened_in_the_pipeline() -> None:
+    """The sync/async bridge happens once, at the pipeline entry point.
+
+    A per-provider-call ``asyncio.run`` would create and tear down a loop for
+    every call, discard the client state held between them, and serialise work
+    the pipeline could otherwise overlap — the failure ADR-0211 Decision 1 exists
+    to prevent, and one that no functional test would notice.
+    """
+    offenders: dict[str, list[str]] = {}
+    total = 0
+    for path in sorted(TEST_GENERATION_PACKAGE.rglob("*.py")):
+        calls = _loop_entry_calls(path)
+        if not calls:
+            continue
+        total += len(calls)
+        if path.name != _BRIDGE_MODULE:
+            offenders[str(path.relative_to(REPO_ROOT))] = calls
+
+    assert (
+        not offenders
+    ), f"event loops may only be opened in {_BRIDGE_MODULE}, but found: {offenders}"
+    assert total == 1, (
+        f"expected exactly one event-loop entry point in the package, found {total}. "
+        "The bridge is a single asyncio.run at the Celery task boundary (ADR-0211 D1)."
+    )
+
+
+def test_test_generation_does_not_import_a_provider_sdk() -> None:
+    """N5 calls the gateway interface only (§18 L1766, §37 L2745)."""
+    offenders = [
+        f"{path.relative_to(REPO_ROOT)}: {sorted(_imported_roots(path) & VENDOR_MODULES)}"
+        for path in TEST_GENERATION_PACKAGE.rglob("*.py")
+        if _imported_roots(path) & VENDOR_MODULES
+    ]
+    assert not offenders, f"test_generation must not import a provider SDK: {offenders}"

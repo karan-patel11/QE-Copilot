@@ -29,11 +29,22 @@ class ModelOperation(StrEnum):
     coarse pipeline stages rather than function names.
     """
 
-    #: §22.1 requirement decomposition (ADR-0207).
+    #: §22.1 requirement decomposition (ADR-0207). Also carries §22 steps 4 and
+    #: 5 — entity/constraint extraction and risk identification fold into the
+    #: same call rather than getting their own (ADR-0211 Decision 7).
     REQUIREMENT_DECOMPOSITION = "requirement_decomposition"
+    #: §22 test-plan generation.
+    TEST_PLAN = "test_plan"
     #: §22 detailed test generation.
     TEST_GENERATION = "test_generation"
-    #: §22 code generation for a generated case.
+    #: §22 code generation, Pytest specifically. Framework-specific rather than
+    #: generic because §7.1 L229-234 names Playwright and REST-API Python as
+    #: initially-supported frameworks too: rows written under one shared
+    #: ``code_generation`` value could never be split by framework afterwards,
+    #: since ``model_runs`` carries no framework column (ADR-0211 Decision 4).
+    PYTEST_CODEGEN = "pytest_codegen"
+    #: Reserved for framework-agnostic code generation. **Never written in
+    #: Phase 2** — a roll-up seeing these rows knows they came from elsewhere.
     CODE_GENERATION = "code_generation"
     #: Embedding calls, once RAG exists.
     EMBEDDING = "embedding"

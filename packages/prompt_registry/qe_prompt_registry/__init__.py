@@ -12,6 +12,7 @@ import this one — the gateway receives a resolved version string as a paramete
 from __future__ import annotations
 
 from qe_common.prompts import PromptStatus
+from qe_prompt_registry.seed import PATH_TO_ACTIVE, SeedOutcome, seed_all, seed_template
 from qe_prompt_registry.service import (
     create_version,
     get_active,
@@ -27,14 +28,18 @@ from qe_prompt_registry.templates import (
 )
 
 __all__ = [
+    "PATH_TO_ACTIVE",
     "SOURCE_TEMPLATES",
     "PromptStatus",
+    "SeedOutcome",
     "SourceTemplate",
     "create_version",
     "get_active",
     "get_source_template",
     "get_version",
     "list_versions",
+    "seed_all",
+    "seed_template",
     "sha256_of",
     "transition_status",
 ]

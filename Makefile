@@ -10,7 +10,7 @@ NPM ?= npm
 .PHONY: help install install-py install-web \
         fmt fmt-check lint typecheck test test-unit test-integration \
         web-lint web-typecheck web-build web-e2e \
-        check up down migrate downgrade clean
+        check up down migrate seed downgrade clean
 
 help:
 	@echo "Targets:"
@@ -80,6 +80,10 @@ down:
 
 migrate:
 	$(BIN)/alembic upgrade head
+
+# Idempotent: every prompt walks the full §19 lifecycle to ACTIVE (ADR-0211).
+seed:
+	$(BIN)/qe prompts seed
 
 downgrade:
 	$(BIN)/alembic downgrade -1

@@ -48,6 +48,7 @@ where = [
     "packages/database",
     "packages/ai_gateway",
     "packages/prompt_registry",
+    "packages/test_generation",
     "packages/observability",
     "packages/security",
     "apps/api",
@@ -71,6 +72,7 @@ known-first-party = [
     "qe_database",
     "qe_ai_gateway",
     "qe_prompt_registry",
+    "qe_test_generation",
     "qe_observability",
     "qe_security",
     "qe_api",
@@ -94,6 +96,7 @@ mypy_path = [
     "packages/database",
     "packages/ai_gateway",
     "packages/prompt_registry",
+    "packages/test_generation",
     "packages/observability",
     "packages/security",
     "apps/api",
@@ -119,6 +122,7 @@ pythonpath = [
     "packages/database",
     "packages/ai_gateway",
     "packages/prompt_registry",
+    "packages/test_generation",
     "packages/observability",
     "packages/security",
     "apps/api",
@@ -126,6 +130,11 @@ pythonpath = [
     "apps/scheduler",
     "apps/cli",
 ]
+# Every test in this suite is a function. Without this, pytest tries to collect
+# domain classes whose names begin with "Test" — TestType, TestGeneratorConfig,
+# TestConfigUnsupportedError — and warns on each one it cannot instantiate.
+python_classes = []
 markers = [
     "integration: tests that require live Postgres/Redis services",
+    "evaluation: tolerance-based tests against a real provider (ADR-0206 tier 3)",
 ]

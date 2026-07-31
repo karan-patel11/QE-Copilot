@@ -17,9 +17,10 @@ from sqlalchemy.orm import Session
 
 from qe_auth import Role
 from qe_common.config import get_settings
-from qe_database.models import Organisation, User
+from qe_database.models import Organisation, PromptVersion, User
 from qe_database.models import Role as RoleRow
 from qe_database.session import get_engine
+from qe_prompt_registry import seed_all
 
 _SLUG_STRIP = re.compile(r"[^a-z0-9]+")
 
@@ -99,6 +100,36 @@ def _cmd_org_delete(slug: str) -> int:
     return 0
 
 
+def _cmd_prompts_seed() -> int:
+    """Register every source-resident prompt and walk it to ACTIVE.
+
+    Idempotent: safe to re-run on every deploy. Each version reaches ``ACTIVE``
+    through the five §19 lifecycle transitions rather than a direct write, so
+    seeded rows carry the same guarantee as hand-promoted ones (ADR-0211 D3).
+    """
+    with Session(get_engine()) as session:
+        outcomes = seed_all(session)
+        session.commit()
+    print(json.dumps([outcome.as_dict for outcome in outcomes]))
+    return 0
+
+
+def _cmd_prompts_list() -> int:
+    with Session(get_engine()) as session:
+        rows = session.execute(
+            select(PromptVersion).order_by(PromptVersion.prompt_name, PromptVersion.version)
+        ).scalars()
+        print(
+            json.dumps(
+                [
+                    {"prompt_name": r.prompt_name, "version": r.version, "status": r.status}
+                    for r in rows
+                ]
+            )
+        )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="qe", description="QE Copilot CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -116,6 +147,11 @@ def build_parser() -> argparse.ArgumentParser:
     remove = org_sub.add_parser("delete", help="Delete an organisation and all its data")
     remove.add_argument("slug")
 
+    prompts = sub.add_parser("prompts", help="Manage prompt versions")
+    prompts_sub = prompts.add_subparsers(dest="prompts_command", required=True)
+    prompts_sub.add_parser("seed", help="Register source templates and activate them")
+    prompts_sub.add_parser("list", help="List registered prompt versions")
+
     # TODO(phase-4): `qe generate`  TODO(phase-5): `qe triage`
     return parser
 
@@ -131,6 +167,11 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_org_create(args.name, args.slug, args.admin_email)
         if args.org_command == "delete":
             return _cmd_org_delete(args.slug)
+    if args.command == "prompts":
+        if args.prompts_command == "seed":
+            return _cmd_prompts_seed()
+        if args.prompts_command == "list":
+            return _cmd_prompts_list()
     return 1
 
 

@@ -32,6 +32,7 @@ from qe_ai_gateway.contracts import (
 from qe_ai_gateway.mock import MOCK_MODEL, MockProvider
 from qe_ai_gateway.pricing import RATE_TABLE, ModelRates, UnknownModelError, estimate_cost
 from qe_ai_gateway.recorder import (
+    CommittingModelRunRecorder,
     DatabaseModelRunRecorder,
     InMemoryModelRunRecorder,
     ModelRunRecord,
@@ -43,6 +44,7 @@ __all__ = [
     "DEFAULT_TIMEOUT_SECONDS",
     "MOCK_MODEL",
     "RATE_TABLE",
+    "CommittingModelRunRecorder",
     "DatabaseModelRunRecorder",
     "EmbeddingProvider",
     "GatewayTimeoutError",
