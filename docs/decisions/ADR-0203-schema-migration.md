@@ -1,6 +1,8 @@
 # ADR-0203 — Schema: test_generation_requests, generated_test_cases, model_runs
 
-**Status:** Accepted (Phase 2, N1) — **corrected against `docs/architecture/design-spec.md` (N0.5)**
+**Status:** Accepted (Phase 2, N1) — corrected against
+`docs/architecture/design-spec.md`, **migration `0005` amended in place and the
+N2 round-trip gate re-run and passing**
 
 ## Sources
 
@@ -78,7 +80,21 @@ Additions (derived): `organisation_id` (tenancy, denormalised to avoid a join),
 `updated_at`, `framework`, `ordinal` (stable display order), `validation_errors`
 (JSONB — carries *why* a check failed, which the booleans cannot),
 `duplicate_of` (the counterpart the `duplicate_score` refers to), `is_edited`,
-`reviewed_by`, `reviewed_at` (§11.5 L889–891 edit/approve/reject need an actor).
+`reviewed_by`, `reviewed_at` (§11.5 L889–891 edit/approve/reject need an actor),
+and `test_type` — §11.5 L857–867 lets the requester ask for a mix of positive,
+negative, boundary, security and accessibility cases, and without a per-case
+type there is no way to show that the mix was honoured. (This column was in
+migration `0005` from the start but was missing from this list; recorded now so
+the "every addition is justified" rule actually holds.)
+
+`schema_valid` and `syntax_valid` default to **false**, not true. The
+pre-amendment `validation_status` defaulted to `PASSED`, so a row written before
+validation ran would read as valid — fail-open. Defaulting to false makes an
+unvalidated case indistinguishable from a failed one, which is the safe reading.
+
+`validation_status` survives as a **derived property** on the ORM model, not a
+column: §11.5 L883 displays one "Validation status", but §15.6 makes the two
+booleans the source of truth, and a stored third field could disagree with them.
 
 ### `model_runs` (§15.8 L1527–1540)
 
@@ -90,6 +106,14 @@ Spec columns, kept verbatim: `id`, `provider`, `model`, `operation`,
   (§15.8 L1542). That table is deferred to the P1 prompt-versioning work
   (ADR-0202), so in Phase 2 the column holds the version **string** and is not
   yet a foreign key. Recorded as a known, forward-compatible shortfall.
+
+  > **Hazard for N3/N4.** The column is named `_id` but holds a `String(64)`,
+  > not a UUID. Anything writing it must write the prompt *version identifier*
+  > from the registry (ADR-0202), e.g. `"testgen-v3"` — never a row id, and
+  > never a free-form label. When `prompt_versions` lands, the migration that
+  > converts this to a real FK has to map those strings to rows; strings that
+  > were never registry identifiers will not map. N3 and N4 must therefore take
+  > this value straight from the prompt registry rather than constructing it.
 - Immutable: written once, no `updated_at` — matching `audit_logs`.
 - **No prompt or response text is stored.** §15.8 lists none, and §26.5
   sensitive-data redaction argues against duplicating requirement text into a
@@ -106,10 +130,16 @@ per ADR-0201), `attempts` (retries visible rather than collapsed).
 All three tables are rooted at `organisations` via `ON DELETE CASCADE`,
 inheriting the Phase 1 isolation model and the 404-not-403 cross-tenant rule.
 
-## Outstanding: migration `0005` does not yet match this ADR
+## Resolved: migration `0005` amended in place, N2 re-gated
 
 Migration `0005` (commit `8768a34`) was written against the pre-correction
-column set. It must be amended before N5 builds on it. Known deltas:
+column set and has now been **amended in place** — it has only ever existed on
+this branch and has no external consumers, so a stacked corrective `0006` would
+have added a rename-churn artifact to the permanent history for no benefit. The
+ORM models in `qe_database.models` were amended in the same pass; a migration
+that no model can address would have passed a DDL gate and still been unusable.
+
+Deltas applied:
 
 - `requirement_text` → `source_reference`; `config` → `configuration`;
   `requested_by` → `user_id`
@@ -122,13 +152,54 @@ column set. It must be amended before N5 builds on it. Known deltas:
   `input_tokens` / `output_tokens` → `input_token_count` / `output_token_count`;
   `cost_usd` → `estimated_cost`
 
-`0005` has only ever existed on this branch, so it is amended in place rather
-than corrected by a stacked `0006`. **The N2 round-trip gate must be re-run
-after the amendment.**
+### N2 re-gate evidence
+
+Re-run against a disposable `pgvector/pgvector:pg16` container — the image
+`docker-compose.yml` declares — from a virgin database:
+
+| Check | Result |
+|---|---|
+| `upgrade head` (pass 1), 0001→0005 | applied, head `0005_testgen` |
+| Phase 2 tables created | 3/3 |
+| `downgrade 0004_audit` | applied, head `0004_audit` |
+| Phase 2 tables / indexes remaining | 0 / 0 |
+| Phase 0/1 tables intact after downgrade | 8/8 |
+| `upgrade head` (pass 2) | applied, head `0005_testgen` |
+| Pass 1 vs pass 2 schema (columns, types, nullability, defaults, indexes, FKs) | identical across 93 lines |
+| `--autogenerate` drift, Phase 2 tables | empty |
+| §15.6 / §15.8 spec column coverage | 9/9, 17/17, 12/12 |
+| ORM insert/select round-trip through all three tables | passes |
+
+Two gate-design notes, since the gate is the thing that has to be trustworthy:
+
+- The first run reported "IDENTICAL" while comparing two **empty** captures
+  (migration `0001` had failed on a missing `vector` extension). An equality
+  check that passes on no data is not a gate; it now fails explicitly on an
+  empty capture.
+- The autogenerate probe is scoped to the three Phase 2 tables. It reports
+  Phase 0/1 drift but does not fail on it — see the backlog flag below.
+
+## Backlog flag (not actioned in Phase 2)
+
+The drift probe surfaces four pre-existing Phase 0/1 mismatches between
+`qe_database.models` and the migrated schema:
+
+- index `ix_projects_organisation_id` — in the DB, absent from the model
+- index `ix_repositories_project_id` — in the DB, absent from the model
+- index `ix_users_organisation_id` — in the DB, absent from the model
+- unique constraint `uq_user_roles` — in the model, absent from the DB
+
+These were confirmed pre-existing by running the same probe against the
+pre-amendment tree: the identical four appear. They are **out of scope for
+Phase 2** and no code was changed for them. Recorded here so a future phase
+picks them up deliberately, alongside the `audit_logs` drift noted earlier.
 
 ## Consequences
 
 - The schema matches the fields §11.5 requires, so N7 can be built from it.
 - Spec-sourced and derived columns are separated, so a future reader can tell
   which is which without re-reading the spec.
-- N2's artifact is now known-stale and is tracked, not silently wrong.
+- N2's artifact is corrected, re-gated, and consistent with the ORM: N3–N5 can
+  be built against it.
+- One knowing divergence from spec typing remains — `prompt_version_id` as a
+  string — and it is now flagged where the code that writes it will be read.

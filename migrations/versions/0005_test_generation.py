@@ -6,7 +6,15 @@ Create Date: 2026-07-30
 
 ADR-0203. All three tables are rooted at ``organisations`` through ON DELETE
 CASCADE, inheriting the Phase 1 tenancy model unchanged.
+
+Amended in place (N2 re-gate) to carry the §15.6 / §15.8 column names verbatim.
+The pre-amendment revision renamed and collapsed spec columns — most seriously
+folding ``objective / preconditions / test_data / steps / expected_result /
+tags`` into one ``description``, which §11.5 L873-885 requires displayed
+individually. This revision has only ever existed on this branch and has no
+external consumers, so it is amended rather than corrected by a stacked 0006.
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -41,15 +49,17 @@ def upgrade() -> None:
         sa.Column("project_id", sa.Uuid(), nullable=False),
         sa.Column("repository_id", sa.Uuid(), nullable=True),
         sa.Column("job_id", sa.Uuid(), nullable=True),
-        sa.Column("requested_by", sa.Uuid(), nullable=True),
+        sa.Column("user_id", sa.Uuid(), nullable=True),
         sa.Column("title", sa.String(length=255), nullable=False),
         sa.Column("source_type", sa.String(length=32), nullable=False),
         # Untrusted input: treated as data, never as instructions (ADR-0205).
-        sa.Column("requirement_text", sa.Text(), nullable=False),
+        # Holds the requirement text itself for text-ish source types, and a
+        # storage key for uploaded sources (§11.5 L853 input list).
+        sa.Column("source_reference", sa.Text(), nullable=False),
         sa.Column("framework", sa.String(length=32), server_default="pytest", nullable=False),
         sa.Column("status", sa.String(length=32), server_default="PENDING", nullable=False),
         sa.Column(
-            "config",
+            "configuration",
             postgresql.JSONB(astext_type=sa.Text()),
             server_default=sa.text("'{}'::jsonb"),
             nullable=False,
@@ -63,7 +73,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["repository_id"], ["repositories.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["job_id"], ["jobs.id"], ondelete="SET NULL"),
         # The request outlives the user who made it.
-        sa.ForeignKeyConstraint(["requested_by"], ["users.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="SET NULL"),
     )
     op.create_index(
         "ix_test_generation_requests_org_created",
@@ -84,24 +94,51 @@ def upgrade() -> None:
         sa.Column("organisation_id", sa.Uuid(), nullable=False),
         sa.Column("ordinal", sa.Integer(), server_default="0", nullable=False),
         sa.Column("title", sa.String(length=255), nullable=False),
-        sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("test_type", sa.String(length=32), nullable=False),
+        # §15.6 L1476-1482: the reviewable body of the case, one column per
+        # field, because §11.5 L873-885 displays each of them individually.
+        sa.Column("objective", sa.Text(), nullable=False),
+        sa.Column("preconditions", sa.Text(), nullable=True),
+        sa.Column(
+            "test_data",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default=sa.text("'{}'::jsonb"),
+            nullable=False,
+        ),
+        sa.Column(
+            "steps",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default=sa.text("'[]'::jsonb"),
+            nullable=False,
+        ),
+        sa.Column("expected_result", sa.Text(), nullable=False),
         sa.Column("priority", sa.String(length=16), nullable=False),
+        sa.Column(
+            "tags",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default=sa.text("'[]'::jsonb"),
+            nullable=False,
+        ),
+        sa.Column("test_type", sa.String(length=32), nullable=False),
         sa.Column("framework", sa.String(length=32), server_default="pytest", nullable=False),
         # Model output. Never executed anywhere in this phase (ADR-0205).
-        sa.Column("code", sa.Text(), nullable=False),
-        # Nothing auto-approves.
-        sa.Column(
-            "status", sa.String(length=32), server_default="PENDING_REVIEW", nullable=False
-        ),
-        sa.Column(
-            "validation_status", sa.String(length=32), server_default="PASSED", nullable=False
-        ),
+        sa.Column("generated_code", sa.Text(), nullable=False),
+        # §15.6 L1484-1485: two independent checks, not one collapsed status.
+        sa.Column("schema_valid", sa.Boolean(), server_default=sa.false(), nullable=False),
+        sa.Column("syntax_valid", sa.Boolean(), server_default=sa.false(), nullable=False),
+        # Carries *why* a check failed, which the two booleans cannot.
         sa.Column(
             "validation_errors",
             postgresql.JSONB(astext_type=sa.Text()),
             server_default=sa.text("'[]'::jsonb"),
             nullable=False,
+        ),
+        # Specified (§15.6 L1487) and displayed (§11.5 L885), but stays NULL in
+        # Phase 2: the sandbox that would populate it is P1 (ADR-0205). NULL is
+        # the honest "not executed", and P1 then needs no migration.
+        sa.Column("execution_status", sa.String(length=32), nullable=True),
+        # Nothing auto-approves (§8.2 human-in-the-loop, §11.5 L890).
+        sa.Column(
+            "human_status", sa.String(length=32), server_default="PENDING_REVIEW", nullable=False
         ),
         sa.Column("duplicate_of", sa.Uuid(), nullable=True),
         sa.Column("duplicate_score", sa.Double(), nullable=True),
@@ -126,7 +163,9 @@ def upgrade() -> None:
         "generated_test_cases",
         ["organisation_id", "created_at"],
     )
-    op.create_index("ix_generated_test_cases_status", "generated_test_cases", ["status"])
+    op.create_index(
+        "ix_generated_test_cases_human_status", "generated_test_cases", ["human_status"]
+    )
 
     op.create_table(
         "model_runs",
@@ -137,15 +176,19 @@ def upgrade() -> None:
         sa.Column("request_id", sa.Uuid(), nullable=True),
         sa.Column("provider", sa.String(length=32), nullable=False),
         sa.Column("model", sa.String(length=128), nullable=False),
-        sa.Column("purpose", sa.String(length=64), nullable=False),
-        sa.Column("prompt_version", sa.String(length=64), nullable=True),
-        sa.Column("input_tokens", sa.Integer(), server_default="0", nullable=False),
-        sa.Column("output_tokens", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("operation", sa.String(length=64), nullable=False),
+        # §15.8 L1542 specifies this as a reference to ``prompt_versions``. That
+        # table is deferred (ADR-0202), so in Phase 2 the column holds the
+        # version *string*, not a UUID, and is not yet a foreign key. See the
+        # hazard note in ADR-0203 before writing this field.
+        sa.Column("prompt_version_id", sa.String(length=64), nullable=True),
+        sa.Column("input_token_count", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("output_token_count", sa.Integer(), server_default="0", nullable=False),
         sa.Column("cache_read_input_tokens", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("cache_creation_input_tokens", sa.Integer(), server_default="0", nullable=False),
         sa.Column(
-            "cache_creation_input_tokens", sa.Integer(), server_default="0", nullable=False
+            "estimated_cost", sa.Numeric(precision=12, scale=6), server_default="0", nullable=False
         ),
-        sa.Column("cost_usd", sa.Numeric(precision=12, scale=6), server_default="0", nullable=False),
         sa.Column("latency_ms", sa.Integer(), nullable=True),
         sa.Column("status", sa.String(length=32), server_default="SUCCEEDED", nullable=False),
         sa.Column("stop_reason", sa.String(length=32), nullable=True),
@@ -174,7 +217,7 @@ def downgrade() -> None:
     op.drop_index("ix_model_runs_org_created", table_name="model_runs")
     op.drop_table("model_runs")
 
-    op.drop_index("ix_generated_test_cases_status", table_name="generated_test_cases")
+    op.drop_index("ix_generated_test_cases_human_status", table_name="generated_test_cases")
     op.drop_index("ix_generated_test_cases_org_created", table_name="generated_test_cases")
     op.drop_index("ix_generated_test_cases_request_ordinal", table_name="generated_test_cases")
     op.drop_table("generated_test_cases")

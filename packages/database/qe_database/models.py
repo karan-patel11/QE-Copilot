@@ -232,19 +232,19 @@ class TestGenerationRequest(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
     # The request outlives the user who made it.
-    requested_by: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL")
-    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     source_type: Mapped[str] = mapped_column(String(32), nullable=False)
     #: Untrusted input. Treated as data, never as instructions (ADR-0205, N9).
-    requirement_text: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Holds the requirement text itself for text-ish source types, and a
+    #: storage key for uploaded sources.
+    source_reference: Mapped[str] = mapped_column(Text, nullable=False)
     framework: Mapped[str] = mapped_column(
         String(32), nullable=False, default=TestFramework.PYTEST.value
     )
     status: Mapped[str] = mapped_column(String(32), nullable=False, default=JobState.PENDING.value)
-    config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    configuration: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     prompt_version: Mapped[str | None] = mapped_column(String(64))
     error: Mapped[str | None] = mapped_column(Text)
     summary: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
@@ -289,22 +289,32 @@ class GeneratedTestCase(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text)
-    test_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    #: §15.6 body fields, one column each — §11.5 displays them individually.
+    objective: Mapped[str] = mapped_column(Text, nullable=False)
+    preconditions: Mapped[str | None] = mapped_column(Text)
+    test_data: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    steps: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    expected_result: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[str] = mapped_column(String(16), nullable=False)
+    tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+
+    test_type: Mapped[str] = mapped_column(String(32), nullable=False)
     framework: Mapped[str] = mapped_column(
         String(32), nullable=False, default=TestFramework.PYTEST.value
     )
-    code: Mapped[str] = mapped_column(Text, nullable=False)
+    generated_code: Mapped[str] = mapped_column(Text, nullable=False)
 
-    status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default=TestCaseStatus.PENDING_REVIEW.value
-    )
-    validation_status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default=ValidationStatus.PASSED.value
-    )
+    #: Two independent checks (§15.6), defaulting to *not yet validated*.
+    schema_valid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    syntax_valid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     validation_errors: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB, nullable=False, default=list
+    )
+    #: Stays NULL in Phase 2 — the sandbox is P1 (ADR-0205).
+    execution_status: Mapped[str | None] = mapped_column(String(32))
+
+    human_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=TestCaseStatus.PENDING_REVIEW.value
     )
 
     duplicate_of: Mapped[uuid.UUID | None] = mapped_column(
@@ -323,8 +333,19 @@ class GeneratedTestCase(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         Index("ix_generated_test_cases_request_ordinal", "request_id", "ordinal"),
         Index("ix_generated_test_cases_org_created", "organisation_id", "created_at"),
-        Index("ix_generated_test_cases_status", "status"),
+        Index("ix_generated_test_cases_human_status", "human_status"),
     )
+
+    @property
+    def validation_status(self) -> ValidationStatus:
+        """The single "Validation status" §11.5 L883 displays.
+
+        Derived, not stored: §15.6 specifies the two booleans as the source of
+        truth, and one field that disagrees with them would be a second truth.
+        """
+        if self.schema_valid and self.syntax_valid:
+            return ValidationStatus.PASSED
+        return ValidationStatus.FAILED
 
 
 class ModelRun(UUIDPrimaryKeyMixin, Base):
@@ -350,14 +371,16 @@ class ModelRun(UUIDPrimaryKeyMixin, Base):
 
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     model: Mapped[str] = mapped_column(String(128), nullable=False)
-    purpose: Mapped[str] = mapped_column(String(64), nullable=False)
-    prompt_version: Mapped[str | None] = mapped_column(String(64))
+    operation: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: Spec-named as an id (§15.8 L1542) but holds the version **string** until
+    #: ``prompt_versions`` lands (ADR-0202). Not a foreign key. See ADR-0203.
+    prompt_version_id: Mapped[str | None] = mapped_column(String(64))
 
-    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    input_token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cache_read_input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cache_creation_input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    cost_usd: Mapped[decimal.Decimal] = mapped_column(
+    estimated_cost: Mapped[decimal.Decimal] = mapped_column(
         Numeric(12, 6), nullable=False, default=decimal.Decimal("0")
     )
     latency_ms: Mapped[int | None] = mapped_column(Integer)
