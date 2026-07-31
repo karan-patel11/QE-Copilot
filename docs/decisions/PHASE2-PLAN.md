@@ -41,7 +41,7 @@ gates are proven with live command output.
 - **N1** Lock — the six ADRs above. **Hard gate: no implementation code before this commit.**
 - **N2** Migration `0005` — round-trip verified on a scratch database. DEPS: N1
 - **N3** `qe_prompt_registry` — the single active prompt version, pinned schema. DEPS: N1
-- **N4** `qe_ai_gateway` — interfaces, Anthropic adapter, `MockProvider`, retry/timeout, structured-output validation, `model_runs` persistence. DEPS: N1
+- **N4** `qe_ai_gateway` — interfaces, `GroqProvider` adapter (ADR-0210, superseding the Anthropic adapter of ADR-0201), `MockProvider`, retry/timeout, structured-output validation, `model_runs` persistence. DEPS: N1
 - **N5** `qe_test_generation` — decompose → generate → pytest codegen → static validation chain. DEPS: N2, N3, N4
 - **N6** API — generation endpoints on the Phase 1 job framework; approve/reject/regenerate/validate with audit hooks and RBAC. DEPS: N5
 - **N7** Frontend — Test Generator page; nothing auto-approves. DEPS: N6
