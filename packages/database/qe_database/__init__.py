@@ -2,8 +2,10 @@
 
 from qe_database.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from qe_database.models import (
+    ModelRun,
     Organisation,
     Project,
+    PromptVersion,
     Repository,
     Role,
     User,
@@ -18,8 +20,10 @@ from qe_database.session import (
 
 __all__ = [
     "Base",
+    "ModelRun",
     "Organisation",
     "Project",
+    "PromptVersion",
     "Repository",
     "Role",
     "TimestampMixin",

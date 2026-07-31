@@ -60,6 +60,16 @@ class Settings(BaseSettings):
     auth_dev_admin_email: str = Field(default="admin@example.com", alias="AUTH_DEV_ADMIN_EMAIL")
     auth_dev_organisation_slug: str = Field(default="default", alias="AUTH_DEV_ORGANISATION_SLUG")
 
+    # AI provider gateway (ADR-0201, ADR-0209). The key is read here and never
+    # logged; only qe_ai_gateway consumes it (§18 L1766, §37 L2745). Absent by
+    # default so the deterministic test tier runs with no credential at all —
+    # an accidental live call fails loudly instead of silently billing.
+    anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
+    ai_model: str = Field(default="claude-opus-5", alias="AI_MODEL")
+    ai_timeout_seconds: float = Field(default=120.0, alias="AI_TIMEOUT_SECONDS")
+    ai_max_attempts: int = Field(default=3, alias="AI_MAX_ATTEMPTS")
+    ai_max_output_tokens: int = Field(default=16_000, alias="AI_MAX_OUTPUT_TOKENS")
+
     # Browser origins allowed to call the API. Comma-separated; never "*", since
     # requests carry an Authorization header. The default covers local
     # development (:3000) and the Playwright server (:3100); any deployment

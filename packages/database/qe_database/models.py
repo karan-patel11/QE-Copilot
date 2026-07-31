@@ -17,6 +17,7 @@ from typing import Any
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Double,
     ForeignKey,
@@ -27,11 +28,13 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from qe_common.jobs import JobState
+from qe_common.prompts import PROMPT_STATUS_ORDER, PromptStatus
 from qe_common.test_generation import (
     ModelRunStatus,
     TestCaseStatus,
@@ -401,7 +404,65 @@ class ModelRun(UUIDPrimaryKeyMixin, Base):
         Index("ix_model_runs_org_created", "organisation_id", "created_at"),
         Index("ix_model_runs_job_id", "job_id"),
         Index("ix_model_runs_request_id", "request_id"),
+        # Added by 0006 (ADR-0209): "which runs used prompt version X" is what
+        # justifies the column — §19 L1789 evaluation and per-version cost.
+        Index("ix_model_runs_prompt_version_id", "prompt_version_id"),
     )
+
+
+class PromptVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """One immutable prompt version (§15.8 L1542-1551, ADR-0209).
+
+    A **mirror** of a git-versioned source template, not the source of truth for
+    it: ``template`` records what the source said when the version was
+    registered and ``template_checksum`` makes that claim verifiable. Prompt text
+    stays source-resident so it appears in diffs and reviews (ADR-0202, §19
+    L1772); only the lifecycle state is genuine runtime state.
+
+    Deliberately has **no** ``organisation_id`` — prompts are platform assets,
+    and a tenant column would imply an isolation guarantee Phase 2 does not
+    implement (ADR-0209 Decision 1).
+    """
+
+    __tablename__ = "prompt_versions"
+
+    prompt_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: The exact string ``model_runs.prompt_version_id`` holds, e.g. ``testgen-v3``.
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    template: Mapped[str] = mapped_column(Text, nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=PromptStatus.DRAFT.value
+    )
+    # The version outlives the user who registered it.
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    #: SHA-256 of the source template — turns the mirror claim into a check.
+    template_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("prompt_name", "version", name="uq_prompt_versions_name_version"),
+        # The database guarantee behind ``get_active()`` returning exactly one
+        # row. Without it two concurrent activations both commit and every later
+        # generation silently picks one at random.
+        Index(
+            "uq_prompt_versions_one_active",
+            "prompt_name",
+            unique=True,
+            postgresql_where=text("status = 'ACTIVE'"),
+        ),
+        Index("ix_prompt_versions_name_status", "prompt_name", "status"),
+        CheckConstraint(
+            f"status IN ({', '.join(repr(s.value) for s in PROMPT_STATUS_ORDER)})",
+            name="ck_prompt_versions_status",
+        ),
+    )
+
+    @property
+    def prompt_status(self) -> PromptStatus:
+        """The ``status`` column as its enum value."""
+        return PromptStatus(self.status)
 
 
 __all__ = [
@@ -411,6 +472,7 @@ __all__ = [
     "ModelRun",
     "Organisation",
     "Project",
+    "PromptVersion",
     "Repository",
     "Role",
     "TestGenerationRequest",

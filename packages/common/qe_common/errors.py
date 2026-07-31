@@ -34,7 +34,20 @@ class ErrorCode(StrEnum):
     JOB_NOT_FOUND = "JOB_NOT_FOUND"
     JOB_INVALID_STATE = "JOB_INVALID_STATE"
 
-    # TODO(phase-2): AI gateway / provider error codes (PROVIDER_TIMEOUT, ...)
+    # AI gateway / provider (ADR-0201, ADR-0209). These values are also written
+    # verbatim to ``model_runs.error_code``, so they are part of the persisted
+    # audit record — never renumber or repurpose one.
+    PROVIDER_TIMEOUT = "PROVIDER_TIMEOUT"
+    PROVIDER_ERROR = "PROVIDER_ERROR"
+    PROVIDER_REFUSED = "PROVIDER_REFUSED"
+    PROVIDER_RESPONSE_INVALID = "PROVIDER_RESPONSE_INVALID"
+
+    # Prompt registry (ADR-0209)
+    PROMPT_VERSION_NOT_FOUND = "PROMPT_VERSION_NOT_FOUND"
+    PROMPT_VERSION_INVALID_STATE = "PROMPT_VERSION_INVALID_STATE"
+    PROMPT_VERSION_FORMAT_INVALID = "PROMPT_VERSION_FORMAT_INVALID"
+    PROMPT_TEMPLATE_DRIFT = "PROMPT_TEMPLATE_DRIFT"
+
     # TODO(phase-3): RAG / knowledge-base error codes
     # TODO(phase-4): test-generation error codes
     # TODO(phase-5): defect-triage error codes
@@ -147,3 +160,86 @@ class JobInvalidStateError(AppError):
 
     code = ErrorCode.JOB_INVALID_STATE
     http_status = 409
+
+
+class ProviderError(AppError):
+    """Base for every failure originating at an AI provider (ADR-0201).
+
+    Carries ``error_code`` separately from :attr:`code` because the value
+    persisted to ``model_runs.error_code`` is the audit record, and it must stay
+    stable even if the HTTP mapping changes.
+    """
+
+    code = ErrorCode.PROVIDER_ERROR
+    http_status = 502
+
+
+class RetryableProviderError(ProviderError):
+    """A transient provider failure worth retrying — 429s and 5xx.
+
+    Retryability is expressed as a *type* rather than a flag so the retry policy
+    is decided by whoever raises the error (the adapter, which knows what the
+    status code meant) instead of by a status-code check in the retry loop.
+    A plain :class:`ProviderError` is never retried.
+    """
+
+    code = ErrorCode.PROVIDER_ERROR
+    http_status = 502
+
+
+class ProviderTimeoutError(RetryableProviderError):
+    """The provider did not respond within the configured timeout."""
+
+    code = ErrorCode.PROVIDER_TIMEOUT
+    http_status = 504
+
+
+class ProviderRefusalError(ProviderError):
+    """The provider's safety classifiers declined the request.
+
+    Arrives as a successful HTTP 200 with ``stop_reason == "refusal"`` and empty
+    or partial content, so it must be detected before the response body is read.
+    """
+
+    code = ErrorCode.PROVIDER_REFUSED
+    http_status = 502
+
+
+class ProviderResponseInvalidError(ProviderError):
+    """The provider returned content that does not satisfy the output schema."""
+
+    code = ErrorCode.PROVIDER_RESPONSE_INVALID
+    http_status = 502
+
+
+class PromptVersionNotFoundError(AppError):
+    """No prompt version matched the requested name/version."""
+
+    code = ErrorCode.PROMPT_VERSION_NOT_FOUND
+    http_status = 404
+
+
+class PromptVersionInvalidStateError(AppError):
+    """A transition the prompt lifecycle does not permit (§19 L1791-1807)."""
+
+    code = ErrorCode.PROMPT_VERSION_INVALID_STATE
+    http_status = 409
+
+
+class PromptVersionFormatError(AppError):
+    """A version string that is not ``{prompt_name}-v{n}``."""
+
+    code = ErrorCode.PROMPT_VERSION_FORMAT_INVALID
+    http_status = 422
+
+
+class PromptTemplateDriftError(AppError):
+    """A registered version's stored template no longer matches its source.
+
+    ``prompt_versions`` is a mirror of git-versioned source templates (ADR-0202,
+    preserved by ADR-0209); a checksum mismatch means the two have diverged and
+    the row can no longer be trusted to describe what actually ran.
+    """
+
+    code = ErrorCode.PROMPT_TEMPLATE_DRIFT
+    http_status = 500
