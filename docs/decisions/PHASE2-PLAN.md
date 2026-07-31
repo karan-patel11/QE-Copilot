@@ -42,7 +42,7 @@ correct all along.
 | [ADR-0202](ADR-0202-prompt-registry.md) | Prompt registry — minimal: one active versioned test-gen prompt with pinned input/output schemas; full lifecycle deferred |
 | [ADR-0203](ADR-0203-schema-migration.md) | Schema — `test_generation_requests`, `generated_test_cases`, `model_runs` at migration `0005`, under existing org/project tenancy |
 | [ADR-0204](ADR-0204-async-boundary.md) | Async boundary — generation is a worker job returning `202` + job id; no blocking generation endpoint |
-| [ADR-0205](ADR-0205-validation-scope.md) | Validation — static only (schema, required fields, `ast.parse`, imports, discoverability, duplicates); sandbox execution deferred (P1) |
+| [ADR-0205](ADR-0205-validation-scope.md) | Validation — static only, §22.2 levels 1–6 (schema, required fields, `ast.parse` syntax, imports, duplicates, safety scanning); sandbox execution (level 7) deferred (P1) |
 | [ADR-0206](ADR-0206-test-strategy.md) | Test strategy — deterministic suite on `MockProvider`; contract + eval tiers on the real provider, tolerance-based, CI-skipped |
 
 ## Task graph

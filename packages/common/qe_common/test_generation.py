@@ -26,12 +26,31 @@ class TestFramework(StrEnum):
 
 
 class TestType(StrEnum):
-    """What kind of test a generated case is."""
+    """What kind of test a generated case is.
+
+    Wide enough to report the mix §11.5 L857-867 lets a requester ask for.
+    Without ``POSITIVE``, ``BOUNDARY`` and ``SECURITY`` there is no way to show
+    whether ``include_positive_cases`` / ``include_boundary_cases`` /
+    ``include_security_cases`` were honoured — which is the reason ADR-0203 gave
+    for adding the ``test_type`` column at all, so the vocabulary has to be able
+    to express it (ADR-0211).
+
+    ``BOUNDARY`` and ``EDGE_CASE`` are deliberately distinct: §7.1 L214-215 lists
+    "Boundary cases" and "Edge cases" as separate items.
+
+    There is deliberately **no** ``ACCESSIBILITY`` member. ADR-0208 rejects
+    ``include_accessibility_cases`` with a 422 at the API boundary, so a case of
+    that kind can never reach persistence and a value for it would only invite
+    one to be written.
+    """
 
     UNIT = "unit"
     INTEGRATION = "integration"
-    EDGE_CASE = "edge_case"
+    POSITIVE = "positive"
     NEGATIVE = "negative"
+    BOUNDARY = "boundary"
+    EDGE_CASE = "edge_case"
+    SECURITY = "security"
 
 
 class TestPriority(StrEnum):
@@ -68,15 +87,27 @@ class ValidationStatus(StrEnum):
 
 
 class ValidationCheck(StrEnum):
-    """The individual checks in the static validation chain."""
+    """The individual checks in the static validation chain.
 
+    Members are §22.2 L1977-1983's validation levels, in the order the spec
+    lists them. Levels 1-6 ship in Phase 2; level 7 is deferred (ADR-0205).
+    """
+
+    #: Level 1 — JSON/schema validation.
     SCHEMA = "schema"
+    #: Level 2 — required-field validation.
     REQUIRED_FIELDS = "required_fields"
+    #: Level 3 — framework syntax validation.
     SYNTAX = "syntax"
+    #: Level 4 — import validation.
     IMPORTS = "imports"
-    DISCOVERABILITY = "discoverability"
+    #: Level 5 — duplicate detection.
     DUPLICATE = "duplicate"
-    # TODO(phase-N): SANDBOX_EXECUTION — deferred, see ADR-0205
+    #: Level 6 — safety scanning. A security control rather than an optional
+    #: extra: §32.6 L2493 names unsafe generated-code execution as a security
+    #: test. Flags constructs, never silently strips them (ADR-0205).
+    SAFETY = "safety"
+    # TODO(phase-N): SANDBOX_EXECUTION — §22.2 level 7, deferred (ADR-0205)
 
 
 class ModelRunStatus(StrEnum):
