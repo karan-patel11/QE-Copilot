@@ -1,13 +1,15 @@
 """The N5 pipeline and **the** sync/async bridge (ADR-0204, ADR-0211 Decision 1).
 
 ```
-qe_worker.tasks                        (sync Celery)
-  └── run_generation()                 (sync — this module)
-        └── asyncio.run(_run_stages())  ← the only asyncio.run in this package
-              ├── decompose            → gateway call 1
-              ├── plan_tests           → gateway call 2
-              ├── generate_cases       → gateway call 3
-              └── generate_code        → gateway call 4
+qe_worker.tasks                          (sync Celery)
+  ├── run_generation()                   (sync — this module)
+  │     └── _bridge(_run_stages())        ← the only asyncio.run in this package
+  │           ├── decompose              → gateway call 1
+  │           ├── plan_tests             → gateway call 2
+  │           ├── generate_cases         → gateway call 3
+  │           └── generate_code          → gateway call 4
+  └── regenerate_case_code()             (sync — this module)
+        └── _bridge(generate_code())      ← same bridge, one call
 ```
 
 Two properties this layout exists to guarantee:
@@ -29,18 +31,18 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from qe_ai_gateway.base import LanguageModelProvider
 from qe_common.ai import ModelOperation
-from qe_common.errors import NotFoundError, TestGenerationError
+from qe_common.errors import AppError, ErrorCode, NotFoundError, TestGenerationError
 from qe_common.jobs import JobState, assert_transition
-from qe_common.test_generation import TestFramework
+from qe_common.test_generation import TestFramework, TestPriority, TestType
 from qe_database.models import GeneratedTestCase, TestGenerationRequest
 from qe_observability import bind_log_context, get_logger
 from qe_test_generation.config import TestGeneratorConfig, validate_configuration
@@ -49,7 +51,9 @@ from qe_test_generation.contracts import (
     GeneratedCase,
     GeneratedCases,
     GeneratedCodeSet,
+    TestDatum,
     TestPlan,
+    TestStep,
     decomposition_summary,
 )
 from qe_test_generation.persistence import build_summary, persist_cases
@@ -67,6 +71,19 @@ from qe_test_generation.validation import CaseValidation, validate_case
 logger = get_logger(__name__)
 
 SessionFactory = Callable[[], Session]
+
+_T = TypeVar("_T")
+
+
+def _bridge(coroutine: Coroutine[Any, Any, _T]) -> _T:
+    """**The** sync/async boundary for this package (ADR-0211 Decision 1).
+
+    Every sync entry point funnels through here, so adding a second one — the
+    regeneration path, say — cannot quietly add a second event loop. There is
+    exactly one ``asyncio.run`` in the package and this is it; a test walks the
+    AST and fails if another appears.
+    """
+    return asyncio.run(coroutine)
 
 
 @dataclass(slots=True)
@@ -116,9 +133,8 @@ def run_generation(
     prompts, context, requirement, config = _preflight(session_factory, request_id)
 
     try:
-        # ── THE BRIDGE ──────────────────────────────────────────────────────
         # One loop, four awaits. Nothing below this line opens another.
-        outputs = asyncio.run(
+        outputs = _bridge(
             _run_stages(
                 provider,
                 prompts=prompts,
@@ -127,7 +143,6 @@ def run_generation(
                 config=config,
             )
         )
-        # ────────────────────────────────────────────────────────────────────
         return _finalise(session_factory, request_id, config=config, outputs=outputs)
     except Exception as exc:
         _mark_failed(session_factory, request_id, exc)
@@ -358,6 +373,12 @@ def _mark_failed(
                 assert_transition(request.job_state, JobState.FAILED)
                 request.status = JobState.FAILED.value
             request.error = f"{type(exc).__name__}: {exc}"
+            # Structured, so a client can tell a retryable provider failure from
+            # template drift — which no retry fixes — without parsing the
+            # message (ADR-0212 Decision 5).
+            request.error_code = (
+                exc.code.value if isinstance(exc, AppError) else ErrorCode.INTERNAL_ERROR.value
+            )
             session.commit()
     except Exception as nested:  # pragma: no cover - defensive
         logger.error(
@@ -365,6 +386,107 @@ def _mark_failed(
             exc_info=nested,
             extra={"event_type": "testgen.failure_write_failed", "request_id": str(request_id)},
         )
+
+
+def regenerate_case_code(
+    session_factory: SessionFactory,
+    case_id: uuid.UUID,
+    *,
+    provider: LanguageModelProvider,
+) -> GeneratedTestCase:
+    """Re-run **code generation only**, for one case (ADR-0212 Decision 3).
+
+    One provider call. The case body — title, objective, steps, expected result —
+    is sent unchanged and comes back unchanged: re-running detailed generation
+    would silently replace what the reviewer has already read while they believed
+    they were asking to fix the code. No other case in the request is touched,
+    including its ``human_status``.
+
+    The consequence, stated where callers will read it: this **cannot repair a
+    defective case**, only defective code. A case that failed §22.2 level 2 will
+    fail again, because the same body is resubmitted.
+
+    The ``model_runs`` row carries the **original** ``request_id``, so cost rolls
+    up to the request that owns the case rather than disappearing.
+    """
+    with session_factory() as session:
+        case = _load_case(session, case_id)
+        request = _load(session, case.request_id)
+        prompts = resolve_prompts(session)
+        context = GenerationContext(
+            organisation_id=request.organisation_id,
+            request_id=request.id,
+            project_id=request.project_id,
+            job_id=request.job_id,
+        )
+        original = _case_from_row(case)
+
+    regenerated = _bridge(
+        generate_code(
+            provider,
+            prompts=prompts,
+            context=context,
+            cases=GeneratedCases(cases=[original]),
+        )
+    )
+    if len(regenerated.output.items) != 1:
+        raise TestGenerationError(
+            f"Regeneration returned {len(regenerated.output.items)} code items for one case."
+        )
+    code = regenerated.output.items[0].code
+
+    # Duplicate detection is deliberately not re-run: the case body is unchanged,
+    # so its relationship to its siblings cannot have changed. Re-scoring would
+    # only add noise, and could relabel a case the reviewer already triaged.
+    validation = validate_case(original, code, [])
+
+    with session_factory() as session:
+        case = _load_case(session, case_id)
+        case.generated_code = code
+        case.schema_valid = validation.schema_valid
+        case.syntax_valid = validation.syntax_valid
+        case.validation_errors = [finding.as_dict() for finding in validation.findings]
+        session.commit()
+        session.refresh(case)
+        logger.info(
+            "generated code regenerated",
+            extra={
+                "event_type": "testgen.regenerated",
+                "case_id": str(case_id),
+                "request_id": str(case.request_id),
+                "model_run_id": str(regenerated.model_run_id) if regenerated.model_run_id else None,
+                "valid": validation.schema_valid and validation.syntax_valid,
+            },
+        )
+        return case
+
+
+def _case_from_row(row: GeneratedTestCase) -> GeneratedCase:
+    """Rebuild the stage contract from a persisted row.
+
+    ``test_data`` is stored as the JSONB map the column holds and rebuilt as the
+    list-of-pairs the wire schema needs under strict decoding (ADR-0210).
+    """
+    return GeneratedCase(
+        title=row.title,
+        objective=row.objective,
+        preconditions=row.preconditions or "",
+        test_data=[
+            TestDatum(name=key, value=str(value)) for key, value in (row.test_data or {}).items()
+        ],
+        steps=[TestStep.model_validate(step) for step in row.steps],
+        expected_result=row.expected_result,
+        priority=TestPriority(row.priority),
+        tags=list(row.tags),
+        test_type=TestType(row.test_type),
+    )
+
+
+def _load_case(session: Session, case_id: uuid.UUID) -> GeneratedTestCase:
+    case = session.scalar(select(GeneratedTestCase).where(GeneratedTestCase.id == case_id))
+    if case is None:
+        raise NotFoundError(f"Generated test case {case_id!s} was not found.")
+    return case
 
 
 def cases_for_request(session: Session, request_id: uuid.UUID) -> list[GeneratedTestCase]:
@@ -383,5 +505,6 @@ __all__ = [
     "SessionFactory",
     "StageOutputs",
     "cases_for_request",
+    "regenerate_case_code",
     "run_generation",
 ]

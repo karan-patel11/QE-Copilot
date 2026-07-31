@@ -17,6 +17,7 @@ from qe_api.routers import organisations as organisation_routes
 from qe_api.routers import projects as project_routes
 from qe_api.routers import repositories as repository_routes
 from qe_api.routers import system_health as system_health_routes
+from qe_api.routers import test_generation as test_generation_routes
 from qe_api.routers import users as user_routes
 from qe_common.config import get_settings
 
@@ -45,13 +46,14 @@ router.include_router(repository_routes.router)
 router.include_router(job_routes.router)
 router.include_router(audit_routes.router)
 router.include_router(system_health_routes.router)
+router.include_router(test_generation_routes.router)
+router.include_router(test_generation_routes.cases_router)
 
 # The dev identity provider is mounted only when explicitly enabled, so it never
 # exists — not even in the OpenAPI document — in a non-dev deployment (ADR-0101).
 if get_settings().auth_dev_mode:
     router.include_router(auth_routes.dev_router)
 
-# TODO(phase-4): mount test-generation router.
 # TODO(phase-5): mount defect-triage router.
 # TODO(phase-3): mount knowledge-base router.
 

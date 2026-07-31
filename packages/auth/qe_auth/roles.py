@@ -45,6 +45,9 @@ class Permission(StrEnum):
     JOB_CREATE = "job:create"
     AUDIT_READ = "audit:read"
     SYSTEM_READ = "system:read"
+    TEST_GENERATION_READ = "test_generation:read"
+    TEST_GENERATION_CREATE = "test_generation:create"
+    TEST_CASE_REVIEW = "test_case:review"
 
 
 _ENGINEER_PERMISSIONS: frozenset[Permission] = frozenset(
@@ -55,6 +58,24 @@ _ENGINEER_PERMISSIONS: frozenset[Permission] = frozenset(
         Permission.JOB_READ,
         Permission.JOB_CREATE,
         Permission.SYSTEM_READ,
+        # Reading generated tests is available to every role, including the
+        # operations role that may not author or approve them.
+        Permission.TEST_GENERATION_READ,
+    }
+)
+
+#: Creating a generation and ruling on its output — a quality judgement, not an
+#: operational one. Composed onto three roles **explicitly** rather than added to
+#: the Engineer base set, because the base sets form a chain
+#: (ENGINEER ⊂ QUALITY_ENGINEER ⊂ PLATFORM_ENGINEER) and anything granted to
+#: Engineer would reach Platform Engineer transitively. §6.4 makes Platform
+#: Engineer an operations role; approving a test is not an operational act
+#: (ADR-0212). A future reader tidying this back into the chain would silently
+#: grant approval rights to Platform Engineer — which is why it is spelled out.
+_TEST_GENERATION_AUTHOR: frozenset[Permission] = frozenset(
+    {
+        Permission.TEST_GENERATION_CREATE,
+        Permission.TEST_CASE_REVIEW,
     }
 )
 
@@ -76,9 +97,10 @@ _PLATFORM_ENGINEER_PERMISSIONS: frozenset[Permission] = _QUALITY_ENGINEER_PERMIS
 # Administrators hold every permission by construction, so a newly added
 # permission is never silently withheld from them.
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
-    Role.ENGINEER: _ENGINEER_PERMISSIONS,
-    Role.QUALITY_ENGINEER: _QUALITY_ENGINEER_PERMISSIONS,
-    Role.QE_LEAD: _QE_LEAD_PERMISSIONS,
+    Role.ENGINEER: _ENGINEER_PERMISSIONS | _TEST_GENERATION_AUTHOR,
+    Role.QUALITY_ENGINEER: _QUALITY_ENGINEER_PERMISSIONS | _TEST_GENERATION_AUTHOR,
+    Role.QE_LEAD: _QE_LEAD_PERMISSIONS | _TEST_GENERATION_AUTHOR,
+    # Read-only on test generation, deliberately — see _TEST_GENERATION_AUTHOR.
     Role.PLATFORM_ENGINEER: _PLATFORM_ENGINEER_PERMISSIONS,
     Role.ADMINISTRATOR: frozenset(Permission),
 }

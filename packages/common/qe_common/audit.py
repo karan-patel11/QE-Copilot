@@ -26,6 +26,8 @@ class AuditEntity(StrEnum):
     PROJECT = "project"
     REPOSITORY = "repository"
     JOB = "job"
+    TEST_GENERATION_REQUEST = "test_generation_request"
+    GENERATED_TEST_CASE = "generated_test_case"
 
 
 __all__ = ["AuditAction", "AuditEntity"]

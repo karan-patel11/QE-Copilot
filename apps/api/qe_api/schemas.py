@@ -17,6 +17,7 @@ from qe_auth import Permission, Role, parse_role
 from qe_common.audit import AuditAction, AuditEntity
 from qe_common.health import HealthStatus
 from qe_common.jobs import JobKind, JobState, is_terminal
+from qe_common.test_generation import SourceType, TestFramework
 from qe_database.models import User
 
 T = TypeVar("T")
@@ -337,3 +338,154 @@ __all__ = [
     "UserRead",
     "UserUpdate",
 ]
+
+
+# --- Test generation (§16.3, ADR-0212) --------------------------------------
+
+
+class TestGenerationRequestCreate(BaseModel):
+    """Body of ``POST /test-generation/requests``.
+
+    ``configuration`` is validated against :class:`TestGeneratorConfig` in the
+    route *before* anything is written, so an option this phase cannot honour
+    costs nothing (ADR-0212 Decision 2).
+    """
+
+    project_id: uuid.UUID
+    title: str = Field(min_length=1, max_length=255)
+    source_type: SourceType = SourceType.REQUIREMENT_TEXT
+    source_reference: str = Field(min_length=1, description="Requirement text, or a storage key.")
+    framework: TestFramework = TestFramework.PYTEST
+    repository_id: uuid.UUID | None = None
+    configuration: dict[str, Any] = Field(default_factory=dict)
+
+
+class TestGenerationRequestRead(BaseModel):
+    """One generation request, as clients poll it.
+
+    Deliberately does **not** expose ``test_generation_requests.prompt_version``:
+    that column holds the detailed-generation version only, and four prompts are
+    involved in every run. :attr:`prompt_versions` carries all four
+    (ADR-0212 Decision 4).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    repository_id: uuid.UUID | None
+    job_id: uuid.UUID | None
+    title: str
+    source_type: str
+    framework: str
+    status: JobState
+    configuration: dict[str, Any]
+    created_at: _dt.datetime
+    updated_at: _dt.datetime
+
+    #: Free-text failure reason, and its structured counterpart. A client
+    #: branches on the code — ``PROVIDER_*`` is retryable, ``PROMPT_TEMPLATE_DRIFT``
+    #: and ``TEST_CONFIG_UNSUPPORTED`` are not (ADR-0212 Decision 5).
+    error: str | None = None
+    error_code: str | None = None
+
+    #: All four stage prompts. Empty until the pipeline reaches its provider
+    #: stages — an empty map says "no stage has run", where a null singular
+    #: string could not distinguish that from "not recorded".
+    prompt_versions: dict[str, str] = Field(default_factory=dict)
+    case_count: int = 0
+    produced_by_type: dict[str, int] = Field(default_factory=dict)
+    #: Requested case kinds that no generated case carries. **A reported gap, not
+    #: an error** — a requirement with no failure conditions legitimately yields
+    #: no negative cases (ADR-0208, ADR-0212 Decision 6).
+    unmet_requested_kinds: list[str] = Field(default_factory=list)
+    coverage_notes: str | None = None
+    model_run_ids: list[str] = Field(default_factory=list)
+    #: How many cases passed the §22.2 static chain. A failing case is persisted
+    #: and shown with its reasons, never dropped (ADR-0205).
+    validation_passed: int = 0
+    validation_failed: int = 0
+
+    @classmethod
+    def from_row(cls, row: Any) -> TestGenerationRequestRead:
+        """Build from the ORM row, unpacking the ``summary`` JSONB."""
+        summary: dict[str, Any] = row.summary or {}
+        validation: dict[str, Any] = summary.get("validation", {})
+        return cls(
+            id=row.id,
+            project_id=row.project_id,
+            repository_id=row.repository_id,
+            job_id=row.job_id,
+            title=row.title,
+            source_type=row.source_type,
+            framework=row.framework,
+            status=JobState(row.status),
+            configuration=row.configuration or {},
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            error=row.error,
+            error_code=row.error_code,
+            prompt_versions=summary.get("prompt_versions", {}),
+            case_count=summary.get("case_count", 0),
+            produced_by_type=summary.get("produced_by_type", {}),
+            unmet_requested_kinds=summary.get("unmet_requested_kinds", []),
+            coverage_notes=summary.get("coverage_notes"),
+            model_run_ids=summary.get("model_run_ids", []),
+            validation_passed=validation.get("passed", 0),
+            validation_failed=validation.get("failed", 0),
+        )
+
+
+class GeneratedTestCaseRead(BaseModel):
+    """One generated case — the §11.5 L873-885 display fields."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    request_id: uuid.UUID
+    ordinal: int
+    title: str
+    objective: str
+    preconditions: str | None
+    test_data: dict[str, Any]
+    steps: list[Any]
+    expected_result: str
+    priority: str
+    tags: list[str]
+    test_type: str
+    framework: str
+    generated_code: str
+    schema_valid: bool
+    syntax_valid: bool
+    validation_errors: list[dict[str, Any]]
+    #: Stays null in this phase — the sandbox is P1 (ADR-0205). Never implies the
+    #: stronger claim that the test passes.
+    execution_status: str | None
+    human_status: str
+    duplicate_of: uuid.UUID | None
+    duplicate_score: float | None
+    is_edited: bool
+    reviewed_by: uuid.UUID | None
+    reviewed_at: _dt.datetime | None
+    created_at: _dt.datetime
+
+    @property
+    def validation_status(self) -> str:
+        """The single status §11.5 L883 displays, derived from the two booleans."""
+        return "PASSED" if self.schema_valid and self.syntax_valid else "FAILED"
+
+
+class TestCaseReviewRequest(BaseModel):
+    """Optional reviewer note attached to an approve or reject."""
+
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class TestCaseValidationResponse(BaseModel):
+    """Result of re-running the static chain on a stored case."""
+
+    id: uuid.UUID
+    schema_valid: bool
+    syntax_valid: bool
+    validation_status: str
+    validation_errors: list[dict[str, Any]]

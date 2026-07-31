@@ -34,6 +34,7 @@ from qe_test_generation.pipeline import (
     GenerationOutcome,
     StageOutputs,
     cases_for_request,
+    regenerate_case_code,
     run_generation,
 )
 from qe_test_generation.stages import GenerationContext, resolve_prompts
@@ -64,6 +65,7 @@ __all__ = [
     "cases_for_request",
     "decomposition_summary",
     "persist_cases",
+    "regenerate_case_code",
     "resolve_configuration",
     "resolve_prompts",
     "run_generation",

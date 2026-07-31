@@ -21,7 +21,7 @@ from qe_common.jobs import JobKind, JobState, assert_transition
 from qe_database.models import Job
 from qe_database.session import get_engine
 from qe_observability import bind_log_context, configure_logging, get_logger
-from qe_test_generation import run_generation
+from qe_test_generation import regenerate_case_code, run_generation
 from qe_worker.celery_app import celery_app
 
 configure_logging()
@@ -90,9 +90,35 @@ def _handle_test_generation(job: Job) -> dict[str, Any]:
 
 # One handler per executable kind. A kind with no handler fails the job loudly
 # rather than silently completing with nothing done.
+def _handle_test_case_regeneration(job: Job) -> dict[str, Any]:
+    """Re-run code generation for one case (§16.3 L1629, ADR-0212 D3).
+
+    One provider call, one case touched. Goes through the same bridge as full
+    generation, so this does not add a second event loop.
+    """
+    payload = job.payload or {}
+    raw_case_id = payload.get("case_id")
+    if not raw_case_id:
+        raise ValueError("A test_case_regeneration job requires 'case_id' in its payload.")
+
+    case = regenerate_case_code(
+        _session_factory,
+        uuid.UUID(str(raw_case_id)),
+        provider=_build_provider(),
+    )
+    return {
+        "case_id": str(case.id),
+        "request_id": str(case.request_id),
+        "schema_valid": case.schema_valid,
+        "syntax_valid": case.syntax_valid,
+        "validation_errors": case.validation_errors,
+    }
+
+
 _HANDLERS: dict[str, Callable[[Job], dict[str, Any]]] = {
     JobKind.HEALTH_CHECK.value: _handle_health_check,
     JobKind.TEST_GENERATION.value: _handle_test_generation,
+    JobKind.TEST_CASE_REGENERATION.value: _handle_test_case_regeneration,
     # TODO(phase-3): knowledge ingestion  TODO(phase-5): defect triage
 }
 

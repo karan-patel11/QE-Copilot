@@ -39,6 +39,10 @@ class JobKind(StrEnum):
     HEALTH_CHECK = "health_check"
     #: §22 test generation, executed by :mod:`qe_test_generation` (ADR-0204).
     TEST_GENERATION = "test_generation"
+    #: Re-runs code generation for **one** case (§16.3 L1629, ADR-0212 D3).
+    #: A separate kind rather than a flag on the payload, so the worker's
+    #: handler table shows at a glance that two different things can run.
+    TEST_CASE_REGENERATION = "test_case_regeneration"
     # TODO(phase-3): KNOWLEDGE_INGESTION
     # TODO(phase-5): DEFECT_TRIAGE
 

@@ -248,8 +248,19 @@ class TestGenerationRequest(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     status: Mapped[str] = mapped_column(String(32), nullable=False, default=JobState.PENDING.value)
     configuration: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    #: Holds the *detailed-generation* version only; four prompts are involved
+    #: per run and all four live in ``summary.prompt_versions``. No endpoint
+    #: exposes this column, because it is right about one stage in four
+    #: (ADR-0212 Decision 4).
     prompt_version: Mapped[str | None] = mapped_column(String(64))
     error: Mapped[str | None] = mapped_column(Text)
+    #: Structured counterpart to ``error`` (ADR-0212 Decision 5). Lets a client
+    #: tell a retryable provider failure from template drift, which no retry can
+    #: fix, without parsing the message.
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    #: §26.8 L2190. Unique per organisation where present, so a retried POST
+    #: returns the original request instead of billing a second generation.
+    idempotency_key: Mapped[str | None] = mapped_column(String(255))
     summary: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
     test_cases: Mapped[list[GeneratedTestCase]] = relationship(
@@ -265,6 +276,14 @@ class TestGenerationRequest(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_test_generation_requests_project_id", "project_id"),
         Index("ix_test_generation_requests_job_id", "job_id"),
         Index("ix_test_generation_requests_status", "status"),
+        # Partial: the many rows without a key must not collide (ADR-0212).
+        Index(
+            "uq_test_generation_requests_idempotency",
+            "organisation_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
     )
 
     @property
