@@ -120,7 +120,7 @@ export default function TokenPreviewPage() {
         <h1 className="mt-1 font-display text-display-xl font-bold">
           Design token preview
         </h1>
-        <p className="mt-2 max-w-2xl font-display text-body text-gray-600">
+        <p className="mt-2 max-w-2xl font-display text-body text-ink-muted">
           Every value below resolves through a CSS custom property in{" "}
           <code className="font-mono text-mono-sm">globals.css</code>. Nothing on
           this page uses a stock Tailwind palette class or a raw hex.
@@ -159,10 +159,10 @@ export default function TokenPreviewPage() {
                 >
                   accent {s.accent} · ink {s.ink}
                 </p>
-                <p className="mt-1 font-mono text-mono-xs text-gray-500">
+                <p className="mt-1 font-mono text-mono-xs text-ink-subtle">
                   surface {s.surface} · {s.note}
                 </p>
-                <p className="mt-3 font-display text-body-sm text-gray-600">
+                <p className="mt-3 font-display text-body-sm text-ink-muted">
                   {s.meaning}
                 </p>
               </div>
@@ -178,7 +178,7 @@ export default function TokenPreviewPage() {
             <StatusBadge key={state} status={state} />
           ))}
         </div>
-        <p className="mt-4 max-w-2xl font-display text-body-sm text-gray-600">
+        <p className="mt-4 max-w-2xl font-display text-body-sm text-ink-muted">
           The status word renders inside every badge, so each reads correctly in
           monochrome — the hard rule that lets <code className="font-mono text-mono-sm">pending</code>{" "}
           and <code className="font-mono text-mono-sm">muted</code> differ only in
@@ -214,7 +214,7 @@ export default function TokenPreviewPage() {
             <p className="mt-2 font-mono text-mono-xs uppercase text-eyebrow">
               PROMPT_TEMPLATE_DRIFT
             </p>
-            <p className="mt-4 max-w-sm font-display text-body-sm text-gray-600">
+            <p className="mt-4 max-w-sm font-display text-body-sm text-ink-muted">
               All metadata is mono without exception: timestamps, IDs, status
               labels, error codes, prompt versions — including inside dense
               tables.
@@ -229,7 +229,7 @@ export default function TokenPreviewPage() {
           <button
             type="button"
             data-variant="primary"
-            className="rounded-full bg-black px-5 py-2 font-display text-body-sm font-medium text-white"
+            className="rounded-full bg-surface-inverse px-5 py-2 font-display text-body-sm font-medium text-ink-inverse"
           >
             Approve
           </button>
@@ -237,7 +237,7 @@ export default function TokenPreviewPage() {
           <button
             type="button"
             data-variant="secondary"
-            className="rounded-full border border-black px-5 py-2 font-display text-body-sm font-medium text-black"
+            className="rounded-full border border-ink px-5 py-2 font-display text-body-sm font-medium text-ink"
           >
             View detail →
           </button>
@@ -248,7 +248,7 @@ export default function TokenPreviewPage() {
             type="button"
             data-variant="ai-action"
             data-ai-action="generate-tests"
-            className="inline-flex items-center gap-2 rounded-full border border-dashed border-black px-5 py-2 font-display text-body-sm font-medium text-black"
+            className="inline-flex items-center gap-2 rounded-full border border-dashed border-ink px-5 py-2 font-display text-body-sm font-medium text-ink"
           >
             <span aria-hidden="true">◈</span> Generate Tests
           </button>
@@ -257,12 +257,12 @@ export default function TokenPreviewPage() {
             type="button"
             data-variant="ai-action"
             data-ai-action="regenerate"
-            className="inline-flex items-center gap-2 rounded-full border border-dashed border-black px-5 py-2 font-display text-body-sm font-medium text-black"
+            className="inline-flex items-center gap-2 rounded-full border border-dashed border-ink px-5 py-2 font-display text-body-sm font-medium text-ink"
           >
             <span aria-hidden="true">◈</span> Regenerate
           </button>
         </div>
-        <p className="mt-4 max-w-2xl font-display text-body-sm text-gray-600">
+        <p className="mt-4 max-w-2xl font-display text-body-sm text-ink-muted">
           The dashed variant is the one affordance separating a free action from
           a billed one, so it is restricted to the four allowlisted AI actions.
         </p>
@@ -275,13 +275,13 @@ export default function TokenPreviewPage() {
             <span
               key={tag}
               data-testid="tag-pill"
-              className="inline-flex items-center rounded-full bg-pill px-3 py-1 font-mono text-mono-xs uppercase text-gray-700"
+              className="inline-flex items-center rounded-full bg-pill px-3 py-1 font-mono text-mono-xs uppercase text-ink-secondary"
             >
               {tag}
             </span>
           ))}
         </div>
-        <p className="mt-4 max-w-2xl font-display text-body-sm text-gray-600">
+        <p className="mt-4 max-w-2xl font-display text-body-sm text-ink-muted">
           The hairline rule above each section header, and the uppercase mono
           eyebrow above each title, are both visible throughout this page.
         </p>

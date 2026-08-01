@@ -318,6 +318,85 @@ Direct adoptions, no judgment call.
 
 ---
 
+## T8 — Neutral ramp (added at N7-TOKENS-RAMP, closes C-16)
+
+The original lock defined six *status* semantics plus `rule`, `pill`, `eyebrow`
+and `highlight` — and **no neutral ramp**. There was no token for body text, for
+secondary text, or for a default border, so every page legitimately fell back to
+stock `gray-*`: 87 instances across `components/` and `app/`. That was a gap in
+the lock, not in the components (C-16).
+
+Zinc-based, because the status surfaces and furniture already used zinc values —
+this unifies them rather than introducing a second neutral family. `--rule`,
+`--pill-surface` and `--eyebrow-ink` are now aliases onto ramp steps, so the
+furniture and the neutrals cannot drift into two names for one colour.
+
+**Every ratio below was produced by a script and re-checked against the committed
+values, not estimated.** The generator is the same one used for the T3 palette.
+
+### Neutral ramp — raw steps
+
+| Step | Hex | vs white | vs `#18181B` |
+|---|---|---|---|
+| `neutral-0` | `#FFFFFF` | 1.00:1 | 17.72:1 |
+| `neutral-50` | `#FAFAFA` | 1.04:1 | 16.97:1 |
+| `neutral-100` | `#F4F4F5` | 1.10:1 | 16.12:1 |
+| `neutral-200` | `#E4E4E7` | 1.27:1 | 13.96:1 |
+| `neutral-300` | `#D4D4D8` | 1.48:1 | 11.99:1 |
+| `neutral-400` | `#A1A1AA` | 2.56:1 | 6.91:1 |
+| `neutral-500` | `#71717A` | 4.83:1 | 3.67:1 |
+| `neutral-600` | `#52525B` | 7.73:1 | 2.29:1 |
+| `neutral-700` | `#3F3F46` | 10.44:1 | 1.70:1 |
+| `neutral-900` | `#18181B` | 17.72:1 | 1.00:1 |
+
+### Text (ink) roles — contrast against both surfaces
+
+| Token | Step | Hex | On light `#FFFFFF` | On dark `#18181B` | Role |
+|---|---|---|---|---|---|
+| `ink` | `neutral-900` | `#18181B` | 17.72:1 AAA | 1.00:1 fail | primary text, headings |
+| `ink-secondary` | `neutral-700` | `#3F3F46` | 10.44:1 AAA | 1.70:1 fail | secondary text, table cells |
+| `ink-muted` | `neutral-600` | `#52525B` | 7.73:1 AAA | 2.29:1 fail | body prose, descriptions |
+| `ink-subtle` | `neutral-500` | `#71717A` | 4.83:1 AA | 3.67:1 AA-large | hints, eyebrows, captions |
+| `ink-inverse` | `neutral-0` | `#FFFFFF` | 1.00:1 fail | 17.72:1 AAA | text on surface-inverse |
+
+### Non-text roles (borders/surfaces — 3:1 is the bar, and only against what they sit on)
+
+| Token | Hex | vs white | Note |
+|---|---|---|---|
+| `rule-subtle` | `#F4F4F5` | 1.10:1 | row dividers on white |
+| `rule` | `#E4E4E7` | 1.27:1 | default border on white |
+| `rule-strong` | `#D4D4D8` | 1.48:1 | input borders on white |
+| `surface-raised` | `#FAFAFA` | 1.04:1 | sidebar, subtle panel |
+| `surface-hover` | `#F4F4F5` | 1.10:1 | hover state |
+| `surface-active` | `#E4E4E7` | 1.27:1 | active nav item |
+| `surface-inverse` | `#18181B` | 17.72:1 | primary button fill |
+| `surface-disabled` | `#A1A1AA` | 2.56:1 | disabled button fill |
+
+### There is deliberately no `ink-faint`
+
+The obvious fifth text step, `neutral-400` (`#A1A1AA`), measures **2.56:1 on
+white** — below AA for text (4.5:1) and below even the 3:1 non-text bar. The
+script flagged it, which is the reason it does not exist as a token: shipping a
+text colour that cannot legally carry text only invites its use.
+
+The codebase had exactly one `text-gray-400` (`Sidebar.tsx`), and it migrated to
+`ink-subtle` (4.83:1 AA). That is an accessibility **fix**, not a rename.
+
+`surface-disabled` keeps `neutral-400` as a *fill*, which is acceptable only
+because WCAG 1.4.3 exempts disabled controls. It is not a precedent for anything
+enabled.
+
+### Dark-surface column
+
+Ratios are given against `#18181B` as well as white because `surface-inverse`
+exists (the T4 primary button, and any future dark panel). The column shows which
+inks survive there: only `ink-inverse` is usable on the inverse surface, and
+`ink-subtle` is the sole ramp step that clears a bar on **both** — 4.83:1 light,
+3.67:1 dark. Worth knowing before anyone builds a dark panel and reaches for
+`ink-muted` out of habit.
+
+---
+
 ## 8 — How the tokens are implemented
 
 Two layers, and components may read **only** the second.
@@ -374,6 +453,25 @@ common case fails at compile time and this catches the bypass.
 On `/ci-failures`: a `table` (or `[data-testid="failures-table"]`) is present,
 and `[data-variant="hero-card"]` has count 0.
 
+### Where they live, and why they need their own config
+
+Committed as `apps/web/e2e/design-lock.spec.ts`, run by
+`npm run test:e2e:design` against `playwright.design-lock.config.ts`.
+
+They need a **dev** server. `/dev/tokens` is the only surface rendering the
+dashed AI-action pill today, and `middleware.ts` returns a real 404 for `/dev/*`
+in a production build — correctly. The default `playwright.config.ts` runs
+`next build && next start`, so it can never exercise guard (b). Rather than
+weaken that config so a design check could pass, the guards got their own, and
+the default config now ignores this spec.
+
+### Each guard is written twice
+
+Every guard has a matching *non-vacuity* test that injects the violation and
+asserts the predicate rejects it. A guard that only ever runs where there is
+nothing to find passes forever and proves nothing — which is exactly how C-2 and
+C-3 happened. The injected half is what makes the passing half mean something.
+
 ### What these checks do *not* cover
 
 They are structural, not visual. They cannot catch a wrong shade, bad spacing, or
@@ -392,7 +490,8 @@ decision rather than an omission.
 | 1 | Confirm `lime`, `brick`, `navy`, gray hexes against the actual reference; replace in `globals.css` | N7 |
 | 2 | Confirm `Space Grotesk` / `JetBrains Mono` are acceptable stand-ins for the reference's actual families | N7 |
 | 3 | Visual-regression baselines, once components exist | N8 |
-| 4 | Hero-block card treatment (T6) stays unbuilt until a card-based surface exists | future |
+| 4 | Guard (c)'s positive half — "`/ci-failures` renders a dense table" — activates when that page stops being a placeholder. The hero-card exclusion is enforced now. | N7 pages |
+| 5 | Hero-block card treatment (T6) stays unbuilt until a card-based surface exists | future |
 
 ## Consequences
 

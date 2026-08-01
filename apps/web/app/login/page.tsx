@@ -26,14 +26,14 @@ export default function LoginPage() {
 
   return (
     <section className="w-full max-w-sm">
-      <h1 className="text-2xl font-semibold text-gray-900">QE Copilot</h1>
-      <p className="mt-2 text-sm text-gray-600">
+      <h1 className="text-2xl font-semibold text-ink">QE Copilot</h1>
+      <p className="mt-2 text-sm text-ink-muted">
         Sign in to continue. This environment uses the development identity
         provider.
       </p>
 
       <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-3">
-        <label htmlFor="email" className="text-sm font-medium text-gray-700">
+        <label htmlFor="email" className="text-sm font-medium text-ink-secondary">
           Email address
         </label>
         <input
@@ -45,19 +45,19 @@ export default function LoginPage() {
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           placeholder="you@example.com"
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none"
+          className="rounded-md border border-rule-strong px-3 py-2 text-sm text-ink focus:border-ink focus:outline-none"
         />
         <button
           type="submit"
           disabled={submitting || email.trim() === ""}
-          className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-400"
+          className="rounded-md bg-surface-inverse px-3 py-2 text-sm font-medium text-ink-inverse disabled:cursor-not-allowed disabled:bg-surface-disabled"
         >
           {submitting ? "Signing in…" : "Sign in"}
         </button>
       </form>
 
       {error ? (
-        <p role="alert" className="mt-4 text-sm text-red-700">
+        <p role="alert" className="mt-4 text-sm text-status-failure-ink">
           {error}
         </p>
       ) : null}

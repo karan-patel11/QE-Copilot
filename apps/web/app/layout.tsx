@@ -34,7 +34,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${display.variable} ${mono.variable}`}>
-      <body className="min-h-screen bg-white font-display text-gray-900 antialiased">
+      <body className="min-h-screen bg-surface font-display text-ink antialiased">
         {/* Every route renders inside the gate, so no page has to remember to
             check for a session of its own. */}
         <AuthProvider>

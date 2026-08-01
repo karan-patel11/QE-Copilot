@@ -61,8 +61,8 @@ export default function SystemHealthPage() {
     <section>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">System Health</h1>
-          <p className="mt-2 max-w-2xl text-gray-600">
+          <h1 className="text-2xl font-semibold text-ink">System Health</h1>
+          <p className="mt-2 max-w-2xl text-ink-muted">
             Live status of the API, database, cache, queue, workers, and
             scheduler. Measured on every request.
           </p>
@@ -78,7 +78,7 @@ export default function SystemHealthPage() {
 
         {health ? (
           <>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-ink-subtle">
               Checked at {new Date(health.checked_at).toLocaleTimeString()}
             </p>
 
@@ -86,24 +86,24 @@ export default function SystemHealthPage() {
               {Object.entries(health.components).map(([name, component]) => (
                 <li
                   key={name}
-                  className="rounded-lg border border-gray-200 p-4"
+                  className="rounded-lg border border-rule p-4"
                   data-testid={`health-component-${name}`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <h2 className="text-sm font-medium text-gray-900">
+                    <h2 className="text-sm font-medium text-ink">
                       {COMPONENT_LABELS[name] ?? humanise(name)}
                     </h2>
                     <StatusBadge status={component.status} />
                   </div>
                   {component.detail ? (
-                    <p className="mt-2 text-xs text-gray-600">
+                    <p className="mt-2 text-xs text-ink-muted">
                       {component.detail}
                     </p>
                   ) : null}
-                  <dl className="mt-3 flex flex-col gap-1 text-xs text-gray-600">
+                  <dl className="mt-3 flex flex-col gap-1 text-xs text-ink-muted">
                     {Object.entries(component.metrics).map(([key, value]) => (
                       <div key={key} className="flex justify-between gap-3">
-                        <dt className="text-gray-500">{humanise(key)}</dt>
+                        <dt className="text-ink-subtle">{humanise(key)}</dt>
                         <dd className="truncate font-mono">
                           {formatMetric(key, value)}
                         </dd>
@@ -115,7 +115,7 @@ export default function SystemHealthPage() {
             </ul>
 
             <div>
-              <h2 className="text-sm font-medium text-gray-900">
+              <h2 className="text-sm font-medium text-ink">
                 Jobs by state
               </h2>
               <div className="mt-3">
@@ -126,7 +126,7 @@ export default function SystemHealthPage() {
                     {jobEntries.map(([state, count]) => (
                       <li
                         key={state}
-                        className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-700"
+                        className="rounded-md border border-rule px-3 py-1.5 text-xs text-ink-secondary"
                       >
                         <span className="font-mono">{state}</span>
                         <span className="ml-2 font-semibold">{count}</span>

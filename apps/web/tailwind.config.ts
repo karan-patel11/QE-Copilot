@@ -47,8 +47,29 @@ const config: Config = {
             surface: "var(--status-muted-surface)",
           },
         },
+        // Neutral ramp (C-16). These are the tokens that were missing, and the
+        // reason 87 stock `gray-*` classes had nothing to migrate to.
+        ink: {
+          DEFAULT: "var(--ink)",
+          secondary: "var(--ink-secondary)",
+          muted: "var(--ink-muted)",
+          subtle: "var(--ink-subtle)",
+          inverse: "var(--ink-inverse)",
+        },
+        surface: {
+          DEFAULT: "var(--surface)",
+          raised: "var(--surface-raised)",
+          hover: "var(--surface-hover)",
+          active: "var(--surface-active)",
+          inverse: "var(--surface-inverse)",
+          disabled: "var(--surface-disabled)",
+        },
         // T7 furniture and the T2 marketing accent.
-        rule: "var(--rule)",
+        rule: {
+          DEFAULT: "var(--rule)",
+          subtle: "var(--rule-subtle)",
+          strong: "var(--rule-strong)",
+        },
         pill: "var(--pill-surface)",
         eyebrow: "var(--eyebrow-ink)",
         highlight: "var(--highlight)",

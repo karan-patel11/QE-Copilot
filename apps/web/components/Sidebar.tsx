@@ -13,9 +13,9 @@ export function Sidebar() {
   return (
     <nav
       aria-label="Primary"
-      className="flex h-full w-64 shrink-0 flex-col border-r border-gray-200 bg-gray-50 p-4"
+      className="flex h-full w-64 shrink-0 flex-col border-r border-rule bg-surface-raised p-4"
     >
-      <div className="mb-4 px-2 text-lg font-semibold text-gray-900">
+      <div className="mb-4 px-2 text-lg font-semibold text-ink">
         QE Copilot
       </div>
       <ul className="flex flex-1 flex-col gap-1">
@@ -31,8 +31,8 @@ export function Sidebar() {
                 aria-current={active ? "page" : undefined}
                 className={`block rounded-md px-3 py-2 text-sm ${
                   active
-                    ? "bg-gray-200 font-medium text-gray-900"
-                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    ? "bg-surface-active font-medium text-ink"
+                    : "text-ink-muted hover:bg-surface-hover hover:text-ink"
                 }`}
               >
                 {item.label}
@@ -43,11 +43,11 @@ export function Sidebar() {
       </ul>
 
       {identity ? (
-        <div className="mt-4 border-t border-gray-200 pt-4">
-          <p className="px-3 text-xs text-gray-500" data-testid="signed-in-as">
+        <div className="mt-4 border-t border-rule pt-4">
+          <p className="px-3 text-xs text-ink-subtle" data-testid="signed-in-as">
             {identity.user.email}
           </p>
-          <p className="px-3 text-xs text-gray-400">
+          <p className="px-3 text-xs text-ink-subtle">
             {identity.roles.length > 0
               ? identity.roles.join(", ").replaceAll("_", " ")
               : "no roles assigned"}
@@ -55,7 +55,7 @@ export function Sidebar() {
           <button
             type="button"
             onClick={signOut}
-            className="mt-2 w-full rounded-md px-3 py-2 text-left text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+            className="mt-2 w-full rounded-md px-3 py-2 text-left text-sm text-ink-muted hover:bg-surface-hover hover:text-ink"
           >
             Sign out
           </button>

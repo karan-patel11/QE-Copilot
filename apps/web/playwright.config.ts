@@ -7,6 +7,9 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   testDir: "./e2e",
+  // Runs against a production build, where /dev/* is a real 404 by design.
+  // The design-lock guards need a dev server — see playwright.design-lock.config.ts.
+  testIgnore: /design-lock\.spec\.ts/,
   timeout: 30_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,

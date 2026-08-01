@@ -55,7 +55,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         className="flex min-h-screen items-center justify-center p-8"
         aria-busy="true"
       >
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-ink-subtle">
           {status === "loading" ? "Checking your session…" : "Redirecting to sign in…"}
         </p>
       </main>

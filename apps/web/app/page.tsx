@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback } from "react";
 
 import { EmptyState, ErrorState, LoadingState } from "@/components/RequestState";
-import { StatCard } from "@/components/StatCard";
+import { StatPanel } from "@/components/StatPanel";
 import { StatusBadge } from "@/components/StatusBadge";
 import { apiClient, type Job } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth";
@@ -22,13 +22,13 @@ function JobRow({ job }: { job: Job }) {
   return (
     <li
       data-testid="overview-job"
-      className="flex items-center justify-between gap-4 border-b border-gray-100 py-2 last:border-b-0"
+      className="flex items-center justify-between gap-4 border-b border-rule-subtle py-2 last:border-b-0"
     >
       <div className="min-w-0">
-        <p className="truncate text-sm text-gray-900">{job.kind}</p>
-        <p className="text-xs text-gray-500">{relativeTime(job.created_at)}</p>
+        <p className="truncate text-sm text-ink">{job.kind}</p>
+        <p className="text-xs text-ink-subtle">{relativeTime(job.created_at)}</p>
       </div>
-      <span className="shrink-0 rounded-md border border-gray-200 px-2 py-0.5 font-mono text-xs text-gray-700">
+      <span className="shrink-0 rounded-md border border-rule px-2 py-0.5 font-mono text-xs text-ink-secondary">
         {job.state}
       </span>
     </li>
@@ -52,8 +52,8 @@ export default function OverviewPage() {
     <section>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Overview</h1>
-          <p className="mt-2 max-w-2xl text-gray-600">
+          <h1 className="text-2xl font-semibold text-ink">Overview</h1>
+          <p className="mt-2 max-w-2xl text-ink-muted">
             High-level status across CI failures, test generation, and triage.
           </p>
         </div>
@@ -85,51 +85,48 @@ export default function OverviewPage() {
         ) : null}
 
         {!anyLoading ? (
-          <div
-            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
-            data-testid="overview-stats"
-          >
-            <StatCard
-              label="Projects"
-              value={projects.data?.total ?? "—"}
-              hint={identity ? `Signed in as ${identity.user.email}` : undefined}
-            />
-            <StatCard label="Jobs run" value={jobs.data?.total ?? "—"} />
-            <StatCard
-              label="Workers online"
-              value={
-                typeof health.data?.components.workers?.metrics.online === "number"
-                  ? (health.data.components.workers.metrics.online as number)
-                  : "—"
-              }
-            />
-            <StatCard
-              label="Queue depth"
-              value={
-                typeof health.data?.components.queue?.metrics.depth === "number"
-                  ? (health.data.components.queue.metrics.depth as number)
-                  : "—"
-              }
-            />
-          </div>
+          <StatPanel
+            testId="overview-stats"
+            label="Workspace"
+            icon="◈"
+            meta={identity ? identity.user.email : undefined}
+            tiles={[
+              { label: "Projects", value: projects.data?.total ?? "—" },
+              { label: "Jobs run", value: jobs.data?.total ?? "—" },
+              {
+                label: "Workers online",
+                value:
+                  typeof health.data?.components.workers?.metrics.online === "number"
+                    ? (health.data.components.workers.metrics.online as number)
+                    : "—",
+              },
+              {
+                label: "Queue depth",
+                value:
+                  typeof health.data?.components.queue?.metrics.depth === "number"
+                    ? (health.data.components.queue.metrics.depth as number)
+                    : "—",
+              },
+            ]}
+          />
         ) : null}
 
         <div className="grid gap-8 lg:grid-cols-2">
           <div>
-            <h2 className="text-sm font-medium text-gray-900">Projects</h2>
+            <h2 className="text-sm font-medium text-ink">Projects</h2>
             <div className="mt-3">
               {projects.loading ? (
                 <LoadingState label="projects" />
               ) : projects.data && projects.data.items.length > 0 ? (
-                <ul className="rounded-lg border border-gray-200 px-4">
+                <ul className="rounded-lg border border-rule px-4">
                   {projects.data.items.slice(0, 5).map((project) => (
                     <li
                       key={project.id}
                       data-testid="overview-project"
-                      className="border-b border-gray-100 py-2 last:border-b-0"
+                      className="border-b border-rule-subtle py-2 last:border-b-0"
                     >
-                      <p className="text-sm text-gray-900">{project.name}</p>
-                      <p className="font-mono text-xs text-gray-500">
+                      <p className="text-sm text-ink">{project.name}</p>
+                      <p className="font-mono text-xs text-ink-subtle">
                         {project.slug}
                       </p>
                     </li>
@@ -142,12 +139,12 @@ export default function OverviewPage() {
           </div>
 
           <div>
-            <h2 className="text-sm font-medium text-gray-900">Recent jobs</h2>
+            <h2 className="text-sm font-medium text-ink">Recent jobs</h2>
             <div className="mt-3">
               {jobs.loading ? (
                 <LoadingState label="jobs" />
               ) : jobs.data && jobs.data.items.length > 0 ? (
-                <ul className="rounded-lg border border-gray-200 px-4">
+                <ul className="rounded-lg border border-rule px-4">
                   {jobs.data.items.map((job) => (
                     <JobRow key={job.id} job={job} />
                   ))}
@@ -159,7 +156,7 @@ export default function OverviewPage() {
           </div>
         </div>
 
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-ink-subtle">
           Component detail is on the{" "}
           <Link href="/system-health" className="underline">
             System Health

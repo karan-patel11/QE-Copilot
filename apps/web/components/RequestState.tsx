@@ -10,7 +10,7 @@ export function LoadingState({ label }: { label: string }) {
       role="status"
       aria-busy="true"
       data-testid="loading-state"
-      className="rounded-lg border border-gray-200 p-8 text-sm text-gray-500"
+      className="rounded-lg border border-rule p-8 text-sm text-ink-subtle"
     >
       Loading {label}…
     </div>
@@ -28,7 +28,7 @@ export function ErrorState({
     <div
       role="alert"
       data-testid="error-state"
-      className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-800"
+      className="rounded-lg border border-status-failure bg-status-failure-surface p-6 text-sm text-status-failure-ink"
     >
       <p className="font-medium">Something went wrong</p>
       <p className="mt-1">{message}</p>
@@ -36,7 +36,7 @@ export function ErrorState({
         <button
           type="button"
           onClick={onRetry}
-          className="mt-3 rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-800 hover:bg-red-100"
+          className="mt-3 rounded-md border border-status-failure bg-surface px-3 py-1.5 text-sm font-medium text-status-failure-ink hover:bg-status-failure-surface"
         >
           Try again
         </button>
@@ -49,7 +49,7 @@ export function EmptyState({ message }: { message: string }) {
   return (
     <div
       data-testid="empty-state"
-      className="rounded-lg border border-dashed border-gray-300 p-8 text-sm text-gray-500"
+      className="rounded-lg border border-dashed border-rule-strong p-8 text-sm text-ink-subtle"
     >
       {message}
     </div>

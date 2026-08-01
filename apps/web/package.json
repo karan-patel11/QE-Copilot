@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:design": "playwright test --config playwright.design-lock.config.ts"
   },
   "dependencies": {
     "next": "15.1.3",

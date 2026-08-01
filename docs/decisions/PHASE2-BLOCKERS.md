@@ -506,3 +506,84 @@ output was `0`, when the zero came from a question narrower than the one being
 answered.
 
 **Status: corrected here. No code change.**
+
+---
+
+# N7-TOKENS-RAMP — closures
+
+## C-14 — CLOSED (with one sub-assertion carried forward)
+
+All three §9 guards are committed as `apps/web/e2e/design-lock.spec.ts` and run
+via `npm run test:e2e:design`. Six tests, all passing in a fresh process:
+
+```
+Running 6 tests using 1 worker
+  ✓ guard (a): highlight marks appear only on Overview or inside an empty state
+  ✓ guard (a) is not vacuous: it rejects an injected mark on a functional route
+  ✓ guard (b): every dashed pill is an allowlisted AI action
+  ✓ guard (b) is not vacuous: it rejects a non-allowlisted label and a stray dashed element
+  ✓ guard (c): no view uses the T6 hero-card treatment
+  ✓ guard (c) is not vacuous: it rejects an injected hero card on CI Failures
+  6 passed (10.4s)
+```
+
+**Each guard is written twice** — once against the real application, once against
+an injected violation. That second half is the answer to the failure mode behind
+C-2 and C-3: a guard that only ever runs where there is nothing to find passes
+forever and proves nothing. Guards (a) and (c) currently find nothing real
+(no highlight marks or hero cards exist yet), so without the injected half they
+would be exactly that.
+
+Guards (a) and (c) run against all ten authenticated routes with a real sign-in
+against a live API. Guard (b) runs against `/dev/tokens`.
+
+**Carried forward as design-tokens.md open item 4:** guard (c)'s positive half —
+"`/ci-failures` renders a dense table" — cannot be asserted while that page is a
+placeholder. The exclusion half (no hero-card treatment) is enforced now across
+every route, and is the half that would catch a violation.
+
+## C-15 — CLOSED
+
+`components/StatPanel.tsx` implements the full T5 anatomy as one component:
+header row, numeric readout, bar rows with right-aligned values, stat-tile grid,
+tag-pill list. `components/StatCard.tsx` is **deleted**; Overview renders a
+`StatPanel` with four tiles. Grep confirms `stat-tile` and `stat-bar` markup
+exists in exactly one file, and the only surviving mention of `StatCard` anywhere
+is the comment in `StatPanel.tsx` recording what folded in.
+
+The bar row is why this was worth doing rather than three bespoke panels: §25
+requires a confidence *score*, and `StatPanel` prints the number at the right
+edge of every bar by construction, so no future page can render the bar and drop
+the number.
+
+All 8 pre-existing e2e tests still pass, so the Overview rewire is not a
+regression.
+
+## C-16 — CLOSED
+
+The neutral ramp is added as design-tokens.md **T8**, with every ratio produced
+by a script rather than estimated. Migration result:
+
+```
+$ grep -rnE '(bg|text|border|ring|from|to|via|divide|outline|decoration|accent|
+   shadow|hover:bg|hover:text|focus:border|disabled:bg)-(slate|gray|zinc|neutral|
+   stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|
+   violet|purple|fuchsia|pink|rose)-[0-9]{2,3}' --include='*.tsx' components/ app/
+EXIT CODE: 1   ← 1 means zero matches
+```
+
+94 stock-palette classes migrated (87 `gray` → neutral tokens, 7 `red` →
+`status-failure`), plus 11 non-numbered `white`/`black` literals the family grep
+could not see, which are now `surface` / `ink-inverse` / `surface-inverse` /
+`ink` / `border-ink`.
+
+### C-16a — an accessibility defect the ramp work exposed
+
+The script rejected the obvious fifth text step. `neutral-400` (`#A1A1AA`) is
+**2.56:1 on white** — below AA for text and below even the 3:1 non-text bar — yet
+`text-gray-400` was carrying text in `Sidebar.tsx`. There is therefore **no
+`ink-faint` token**, and that one usage moved up to `ink-subtle` (4.83:1).
+
+A token that fails AA for text only invites text that cannot be read. Recorded
+because the fix arrived as a side effect of tokenising, and would not have been
+found by migrating the classes mechanically.

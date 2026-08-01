@@ -16,21 +16,21 @@ export default function AdministrationPage() {
 
   return (
     <section>
-      <h1 className="text-2xl font-semibold text-gray-900">Administration</h1>
-      <p className="mt-2 max-w-2xl text-gray-600">
+      <h1 className="text-2xl font-semibold text-ink">Administration</h1>
+      <p className="mt-2 max-w-2xl text-ink-muted">
         Manage organisations, users, roles, and projects.
       </p>
 
       <div className="mt-6 flex flex-col gap-8">
         <div>
-          <h2 className="text-sm font-medium text-gray-900">Organisation</h2>
+          <h2 className="text-sm font-medium text-ink">Organisation</h2>
           <div className="mt-3">
             {organisations.loading ? (
               <LoadingState label="organisation" />
             ) : organisation ? (
-              <div className="rounded-lg border border-gray-200 p-4">
-                <p className="text-sm text-gray-900">{organisation.name}</p>
-                <p className="font-mono text-xs text-gray-500">
+              <div className="rounded-lg border border-rule p-4">
+                <p className="text-sm text-ink">{organisation.name}</p>
+                <p className="font-mono text-xs text-ink-subtle">
                   {organisation.slug}
                 </p>
               </div>
@@ -44,7 +44,7 @@ export default function AdministrationPage() {
         </div>
 
         <div>
-          <h2 className="text-sm font-medium text-gray-900">Users</h2>
+          <h2 className="text-sm font-medium text-ink">Users</h2>
           <div className="mt-3">
             {users.loading ? (
               <LoadingState label="users" />
@@ -54,9 +54,9 @@ export default function AdministrationPage() {
             ) : users.error ? (
               <ErrorState message={users.error} onRetry={users.reload} />
             ) : users.data && users.data.items.length > 0 ? (
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <div className="overflow-x-auto rounded-lg border border-rule">
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                  <thead className="border-b border-rule bg-surface-raised text-xs uppercase tracking-wide text-ink-subtle">
                     <tr>
                       <th scope="col" className="px-4 py-2 font-medium">
                         Email
@@ -77,18 +77,18 @@ export default function AdministrationPage() {
                       <tr
                         key={user.id}
                         data-testid="admin-user-row"
-                        className="border-b border-gray-100 last:border-b-0"
+                        className="border-b border-rule-subtle last:border-b-0"
                       >
-                        <td className="px-4 py-2 text-gray-900">{user.email}</td>
-                        <td className="px-4 py-2 text-gray-600">
+                        <td className="px-4 py-2 text-ink">{user.email}</td>
+                        <td className="px-4 py-2 text-ink-muted">
                           {user.full_name ?? "—"}
                         </td>
-                        <td className="px-4 py-2 text-gray-600">
+                        <td className="px-4 py-2 text-ink-muted">
                           {user.roles.length > 0
                             ? user.roles.join(", ").replaceAll("_", " ")
                             : "—"}
                         </td>
-                        <td className="px-4 py-2 text-gray-600">
+                        <td className="px-4 py-2 text-ink-muted">
                           {user.is_active ? "Active" : "Deactivated"}
                         </td>
                       </tr>
@@ -102,7 +102,7 @@ export default function AdministrationPage() {
           </div>
         </div>
 
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-ink-subtle">
           Creating and editing users is available through the API; the management
           UI arrives with the administration console.
         </p>
