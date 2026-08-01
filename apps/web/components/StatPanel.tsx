@@ -29,12 +29,27 @@ export interface StatTile {
   hint?: string;
 }
 
+/**
+ * A bar row without the bar: same geometry, mono label left and value right.
+ *
+ * Used where the value has no proportion behind it — a prompt version string,
+ * for instance. Drawing a full-width bar for `decompose-v1` would be a length
+ * that encodes nothing, and T3's rule against colour-as-sole-signal has the same
+ * root as length-as-decoration: a visual that carries no information should not
+ * look like one that does.
+ */
+export interface StatRow {
+  label: string;
+  value: string;
+}
+
 export interface StatPanelProps {
   label: string;
   icon?: string;
   meta?: string;
   readout?: { value: string | number; caption?: string };
   bars?: StatBar[];
+  rows?: StatRow[];
   tiles?: StatTile[];
   tags?: string[];
   testId?: string;
@@ -80,12 +95,30 @@ function Bar({ label, value, display }: StatBar) {
   );
 }
 
+function Row({ label, value }: StatRow) {
+  return (
+    <div
+      data-testid="stat-row"
+      className="flex items-center justify-between gap-3 border-b border-rule-subtle py-1.5 last:border-b-0"
+    >
+      <span className="font-mono text-mono-xs uppercase text-ink-subtle">{label}</span>
+      <span
+        data-testid="stat-row-value"
+        className="font-mono text-mono-sm text-ink"
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
 export function StatPanel({
   label,
   icon,
   meta,
   readout,
   bars,
+  rows,
   tiles,
   tags,
   testId,
@@ -124,6 +157,14 @@ export function StatPanel({
           <div className="flex flex-col gap-2">
             {bars.map((bar) => (
               <Bar key={bar.label} {...bar} />
+            ))}
+          </div>
+        ) : null}
+
+        {rows?.length ? (
+          <div className="flex flex-col">
+            {rows.map((row) => (
+              <Row key={row.label} {...row} />
             ))}
           </div>
         ) : null}

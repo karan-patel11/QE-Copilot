@@ -108,6 +108,116 @@ export interface ApiErrorBody {
   details: { field: string | null; message: string }[];
 }
 
+
+// --- Test generation (§16.3, ADR-0212) --------------------------------------
+
+export type SourceType = "requirement_text" | "user_story" | "acceptance_criteria";
+export type TestFramework = "pytest";
+export type TestType =
+  | "unit"
+  | "integration"
+  | "positive"
+  | "negative"
+  | "boundary"
+  | "edge_case"
+  | "security";
+export type TestPriority = "P0" | "P1" | "P2" | "P3";
+
+/** The eleven §11.5 L857-867 options (ADR-0208). */
+export interface TestGeneratorConfig {
+  test_type: TestType;
+  framework: TestFramework;
+  target_service: string | null;
+  number_of_tests: number;
+  include_positive_cases: boolean;
+  include_negative_cases: boolean;
+  include_boundary_cases: boolean;
+  include_security_cases: boolean;
+  /** Always false on the wire: the API refuses `true` with 422 (ADR-0212 D2). */
+  include_accessibility_cases: boolean;
+  desired_priority: TestPriority | null;
+  max_generation_cost_usd: number | null;
+}
+
+export interface TestGenerationRequestCreate {
+  project_id: string;
+  title: string;
+  source_type: SourceType;
+  source_reference: string;
+  framework: TestFramework;
+  repository_id?: string | null;
+  configuration: Partial<TestGeneratorConfig>;
+}
+
+export interface TestGenerationRequest {
+  id: string;
+  project_id: string;
+  repository_id: string | null;
+  job_id: string | null;
+  title: string;
+  source_type: string;
+  framework: string;
+  status: JobState;
+  configuration: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  error: string | null;
+  /** Structured counterpart to `error` — D5. `PROMPT_TEMPLATE_DRIFT` is not retryable. */
+  error_code: string | null;
+  /** All four stage prompts — D4. Empty until the pipeline reaches a provider stage. */
+  prompt_versions: Record<string, string>;
+  case_count: number;
+  produced_by_type: Record<string, number>;
+  /** Requested kinds no case carries — D6. Reported, never an error. */
+  unmet_requested_kinds: string[];
+  coverage_notes: string | null;
+  model_run_ids: string[];
+  validation_passed: number;
+  validation_failed: number;
+}
+
+export interface TestStep {
+  action: string;
+  expected: string;
+}
+
+export interface GeneratedTestCase {
+  id: string;
+  request_id: string;
+  ordinal: number;
+  title: string;
+  objective: string;
+  preconditions: string | null;
+  test_data: Record<string, unknown>;
+  steps: TestStep[];
+  expected_result: string;
+  priority: string;
+  tags: string[];
+  test_type: string;
+  framework: string;
+  generated_code: string;
+  schema_valid: boolean;
+  syntax_valid: boolean;
+  validation_errors: { check: string; message: string }[];
+  /** Null in this phase — the sandbox is P1 (ADR-0205). Never implies "passed". */
+  execution_status: string | null;
+  human_status: string;
+  duplicate_of: string | null;
+  duplicate_score: number | null;
+  is_edited: boolean;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export interface TestCaseValidation {
+  id: string;
+  schema_valid: boolean;
+  syntax_valid: boolean;
+  validation_status: string;
+  validation_errors: { check: string; message: string }[];
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly body: ApiErrorBody | null;
@@ -180,5 +290,39 @@ export const apiClient = {
   createJob: (kind = "health_check"): Promise<Job> =>
     request("/api/v1/jobs", { method: "POST", body: JSON.stringify({ kind }) }),
 
-  // TODO(phase-4): testGenerator.*  TODO(phase-5): defectTriage.*
+  // --- Test generation (§16.3) ---
+  createGenerationRequest: (
+    body: TestGenerationRequestCreate,
+    idempotencyKey?: string,
+  ): Promise<TestGenerationRequest> =>
+    request("/api/v1/test-generation/requests", {
+      method: "POST",
+      body: JSON.stringify(body),
+      // §26.8. A replay returns the original request instead of billing a second
+      // generation — and after a dispatch failure it returns that failed row
+      // forever, which is why the UI rotates the key rather than reusing it (C-13).
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {},
+    }),
+  generationRequest: (id: string): Promise<TestGenerationRequest> =>
+    request(`/api/v1/test-generation/requests/${id}`),
+  generationTests: (id: string, limit = 50): Promise<Page<GeneratedTestCase>> =>
+    request(`/api/v1/test-generation/requests/${id}/tests?limit=${limit}`),
+  approveTest: (id: string, note?: string): Promise<GeneratedTestCase> =>
+    request(`/api/v1/generated-tests/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ note: note ?? null }),
+    }),
+  rejectTest: (id: string, note?: string): Promise<GeneratedTestCase> =>
+    request(`/api/v1/generated-tests/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ note: note ?? null }),
+    }),
+  regenerateTest: (
+    id: string,
+  ): Promise<{ test_id: string; request_id: string; job_id: string }> =>
+    request(`/api/v1/generated-tests/${id}/regenerate`, { method: "POST" }),
+  validateTest: (id: string): Promise<TestCaseValidation> =>
+    request(`/api/v1/generated-tests/${id}/validate`, { method: "POST" }),
+
+  // TODO(phase-5): defectTriage.*
 };
