@@ -82,7 +82,12 @@ def test_only_implemented_kinds_are_declared() -> None:
 
     The point of pinning this set is that a kind the worker cannot execute would
     still be accepted by the API and then fail at run time. Phase 1 shipped
-    ``health_check``; Phase 2 adds ``test_generation`` (ADR-0204). Future kinds
-    stay ``TODO`` comments in :class:`JobKind` until their handler exists.
+    ``health_check``; Phase 2 adds ``test_generation`` (ADR-0204) and
+    ``test_case_regeneration`` (ADR-0212 D3). Future kinds stay ``TODO``
+    comments in :class:`JobKind` until their handler exists.
     """
-    assert {kind.value for kind in JobKind} == {"health_check", "test_generation"}
+    assert {kind.value for kind in JobKind} == {
+        "health_check",
+        "test_generation",
+        "test_case_regeneration",
+    }

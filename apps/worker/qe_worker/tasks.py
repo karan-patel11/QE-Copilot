@@ -105,6 +105,9 @@ def _handle_test_case_regeneration(job: Job) -> dict[str, Any]:
         _session_factory,
         uuid.UUID(str(raw_case_id)),
         provider=_build_provider(),
+        # This job, not the one that first generated the case — otherwise the
+        # two runs are indistinguishable in model_runs (ADR-0212 D3).
+        job_id=job.id,
     )
     return {
         "case_id": str(case.id),

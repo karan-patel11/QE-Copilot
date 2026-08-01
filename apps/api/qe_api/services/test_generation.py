@@ -20,7 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from qe_api.services.audit import record_audit
 from qe_api.services.projects import get_project
-from qe_api.services.support import DEFAULT_LIMIT, commit_or_conflict, flush_or_conflict
+from qe_api.services.support import (
+    DEFAULT_LIMIT,
+    commit_and_refresh,
+    commit_or_conflict,
+    flush_or_conflict,
+)
 from qe_auth import Permission, Principal
 from qe_common.audit import AuditAction, AuditEntity
 from qe_common.errors import (
@@ -154,7 +159,12 @@ async def create_generation_request(
         ) from exc
 
     job.celery_task_id = task_id
-    await commit_or_conflict(session, "The job could not be updated.")
+    # Refresh, not a bare commit: ``updated_at`` is computed by the database
+    # (``onupdate=now()``) and is expired after an UPDATE, so the response
+    # serialiser reading it would trigger lazy IO from a context that cannot
+    # await — surfacing as MissingGreenlet. support.commit_and_refresh does that
+    # IO explicitly.
+    await commit_and_refresh(session, request, "The job could not be updated.")
     logger.info("generation request queued", extra={"event_type": "testgen.queued"})
     return request, True
 
@@ -346,7 +356,7 @@ async def regenerate_case(
             "The job queue is unavailable; the regeneration was not started."
         ) from exc
 
-    await commit_or_conflict(session, "The job could not be updated.")
+    await commit_and_refresh(session, job, "The job could not be updated.")
     return case, job
 
 

@@ -8,6 +8,7 @@ deterministic).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from qe_common.ai import ModelOperation
@@ -119,5 +120,44 @@ __all__ = [
     "REQUIREMENT",
     "SAFE_CODE",
     "STAGE_RESPONSES",
+    "schema_aware_response",
     "source_prompts",
 ]
+
+
+def _code_payload_for(prompt: str) -> dict[str, Any]:
+    """A code payload sized to however many cases the prompt actually carries.
+
+    Full generation sends every case; regeneration sends exactly one
+    (ADR-0212 D3). A fixed-size payload would satisfy one and fail the other.
+    """
+    import json
+    import re
+
+    match = re.search(r"<test_cases>\s*(\{.*?\})\s*</test_cases>", prompt, re.DOTALL)
+    count = len(json.loads(match.group(1))["cases"]) if match else 1
+    return {"items": [{"title": f"case-{index}", "code": SAFE_CODE} for index in range(count)]}
+
+
+def schema_aware_response() -> Callable[[Any], dict[str, Any]]:
+    """One scripted responder keyed on the schema the caller asked for.
+
+    Positional replay (``responses=[a, b, c, d]``) only works for a pipeline that
+    runs its stages in a fixed order exactly once. Regeneration calls the codegen
+    stage on its own, so a positional script would hand it the decomposition
+    payload. Keying on ``output_schema`` makes the mock correct for any stage
+    invoked in any order, which is what an offline stand-in has to be.
+    """
+    by_schema: dict[str, dict[str, Any]] = {
+        "Decomposition": DECOMPOSITION_PAYLOAD,
+        "TestPlan": PLAN_PAYLOAD,
+        "GeneratedCases": CASES_PAYLOAD,
+    }
+
+    def _respond(request: Any) -> dict[str, Any]:
+        name = request.output_schema.__name__
+        if name == "GeneratedCodeSet":
+            return _code_payload_for(request.prompt)
+        return by_schema[name]
+
+    return _respond

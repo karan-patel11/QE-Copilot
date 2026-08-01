@@ -130,9 +130,14 @@ def run_generation(
     must be able to roll back as a unit, and the failure write that must survive
     when it does.
     """
-    prompts, context, requirement, config = _preflight(session_factory, request_id)
-
     try:
+        # Inside the try, deliberately. Pre-flight is where an unseeded registry,
+        # a drifted template, or a refused config surfaces — all real failures a
+        # client is polling for. Left outside, they would fail the *job* while the
+        # request row sat at QUEUED forever, and no ``error_code`` would ever be
+        # written for the frontend to branch on (ADR-0212 Decision 5).
+        prompts, context, requirement, config = _preflight(session_factory, request_id)
+
         # One loop, four awaits. Nothing below this line opens another.
         outputs = _bridge(
             _run_stages(
@@ -230,6 +235,14 @@ def _preflight(
             job_id=str(request.job_id) if request.job_id else None,
         )
 
+        # Claim the request as RUNNING *before* anything fallible, and commit it.
+        # The job state machine has no QUEUED -> FAILED edge, so a failure during
+        # pre-flight could not otherwise be recorded on the row at all — it would
+        # raise JobInvalidStateError inside the failure handler and leave the
+        # request stuck at QUEUED.
+        _advance(request, JobState.RUNNING)
+        session.commit()
+
         config = validate_configuration(request.configuration)
         if request.framework != TestFramework.PYTEST.value:
             raise TestGenerationError(
@@ -246,7 +259,6 @@ def _preflight(
         )
         requirement = request.source_reference
 
-        _advance(request, JobState.RUNNING)
         _advance(request, JobState.WAITING_FOR_PROVIDER)
         # The column is singular (§15.6) but four prompts are involved. The
         # detailed-generation version is recorded here as the primary; all four
@@ -393,6 +405,7 @@ def regenerate_case_code(
     case_id: uuid.UUID,
     *,
     provider: LanguageModelProvider,
+    job_id: uuid.UUID | None = None,
 ) -> GeneratedTestCase:
     """Re-run **code generation only**, for one case (ADR-0212 Decision 3).
 
@@ -406,8 +419,11 @@ def regenerate_case_code(
     defective case**, only defective code. A case that failed §22.2 level 2 will
     fail again, because the same body is resubmitted.
 
-    The ``model_runs`` row carries the **original** ``request_id``, so cost rolls
-    up to the request that owns the case rather than disappearing.
+    The ``model_runs`` row carries the **original** ``request_id`` so cost rolls
+    up to the request that owns the case, and the **regeneration** ``job_id`` so
+    the two runs stay distinguishable: same request, different job (ADR-0212 D3).
+    Falling back to the original job's id would make a regeneration
+    indistinguishable from the generation that produced the case.
     """
     with session_factory() as session:
         case = _load_case(session, case_id)
@@ -417,7 +433,7 @@ def regenerate_case_code(
             organisation_id=request.organisation_id,
             request_id=request.id,
             project_id=request.project_id,
-            job_id=request.job_id,
+            job_id=job_id if job_id is not None else request.job_id,
         )
         original = _case_from_row(case)
 
