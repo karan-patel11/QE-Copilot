@@ -405,3 +405,104 @@ of error as C-1 — a partial view presented without being labelled partial.
 
 All six have both a gate row and at least one isolated `test_dN_*` function. **D4
 and D6 are not gaps** — each has a dedicated row and a dedicated test.
+
+---
+
+# N7-TOKENS — design system infrastructure
+
+Opened at N7-TOKENS-CLOSEOUT, over commit `29b7fff`.
+
+## C-14 — The three §9 enforcement guards are specified but unbuilt
+
+`docs/design/design-tokens.md` §9 specifies three Playwright guards, and the
+N7-DESIGN gate names them as the mechanism that keeps the lock honest:
+
+| Guard | Asserts |
+|---|---|
+| (a) | every `[data-testid="highlight-mark"]` outside `/` has a `[data-testid="empty-state"]` ancestor |
+| (b) | every `[data-variant="ai-action"]` carries a `data-ai-action` in the `AI_ACTIONS` allowlist |
+| (c) | `/ci-failures` renders a table and zero `[data-variant="hero-card"]` |
+
+**None of the three exists in `apps/web/e2e/`.** A one-off script asserted (b) by
+hand during closeout — 2 dashed elements, both allowlisted, dashed count equal to
+ai-action count — but that script was deleted after running and is not part of
+the suite. Guards (a) and (c) have never run, and cannot until the Overview hero,
+empty-state marks, and the CI Failures table exist.
+
+Same failure mode as **C-2**: a check that only ever ran in a chat session is a
+claim, not a guard.
+
+**Status: open. Owner: N7 continuation.** They belong with the components they
+police, not in a separate node — (a) and (c) are meaningless until those surfaces
+are built, and building the surface without its guard is exactly how the
+exclusion gets violated.
+
+## C-15 — `StatCard` has not folded into `StatPanel`
+
+design-tokens.md T5 specifies **one** reusable `<StatPanel>` — header row,
+numeric readout, bar rows with right-aligned values, stat-tile mini-grid, tag
+pills — shared by Failure Detail (§11.4), the confidence display (§25), and
+Evaluations (§11.8), with the existing `components/StatCard.tsx` folding into its
+tile grid.
+
+`StatPanel` does not exist. `StatCard.tsx` is unchanged and still renders stock
+`gray-*` classes (see C-16).
+
+The risk is specific rather than cosmetic: T5 exists so the confidence bar-row —
+the §25 pattern where the number must be visible beside the bar — is built once
+and correctly. Three bespoke implementations is three chances to drop the number.
+
+**Status: open. Owner: N7 continuation.**
+
+## C-16 — The token set has no neutral ramp, so 94 stock-palette classes remain
+
+design-tokens.md §8 requires components to read semantic tokens and never a stock
+Tailwind palette class. Measured across `components/` and `app/` with all 22
+numbered Tailwind families:
+
+```
+   87  gray
+    7  red
+   94  total
+```
+
+Two different problems inside that number:
+
+- **87 `gray-*` are currently unavoidable.** The lock defines six *status*
+  semantics plus `rule`, `pill`, `eyebrow` and `highlight` — and **no neutral
+  ramp**. There is no token for body text, secondary text, or a default border,
+  so every page legitimately falls back to `text-gray-600`, `border-gray-200`.
+  This is a gap in the lock, not in the components.
+- **7 `red-*` are genuine un-migrated violations** — `components/RequestState.tsx`
+  lines 31 and 39 (`ErrorState`) and `app/login/page.tsx` line 60. All three
+  predate the lock (untouched by `29b7fff`) and should read `status-failure`.
+
+`components/StatusBadge.tsx` itself is clean: the corrected 22-family grep exits
+1 with zero matches.
+
+**Status: open. Owner: N7 continuation.** Adding the neutral ramp to
+design-tokens.md must come first — migrating the 7 red classes is a five-minute
+change, but migrating 87 gray ones before a token exists to migrate them *to*
+would just relocate the problem.
+
+## C-17 — Correction: the N7-TOKENS stock-colour grep checked 21 of 22 families
+
+The N7-TOKENS report stated "grep for all 21 stock palette families returns
+`matches: 0`". The count was accurate for the regex actually run, but the regex
+**omitted `gray`** — Tailwind v3 ships 22 numbered families, and `gray` is the
+single most-used one in this codebase (87 occurrences).
+
+The scope was also narrower than a reader might infer: the palette grep ran
+against `components/StatusBadge.tsx` only. The separate app-wide grep in that
+report searched for **raw hex**, not palette classes, so nothing app-wide was
+ever checked for stock colours until now.
+
+**The StatusBadge conclusion survives** — re-run with all 22 families it still
+exits 1 with zero matches. What did not survive is the impression that the
+codebase as a whole had been checked.
+
+Same class as **C-1** and **C-10**: a check that looked complete because its
+output was `0`, when the zero came from a question narrower than the one being
+answered.
+
+**Status: corrected here. No code change.**
