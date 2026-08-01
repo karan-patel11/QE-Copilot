@@ -11,20 +11,39 @@ import { useAuth } from "@/lib/auth";
 
 const PUBLIC_ROUTES = new Set(["/login"]);
 
+// The design-token preview under /dev renders outside the session gate: it shows
+// design primitives and no tenant data, and it does not exist in a production
+// build — the route itself calls notFound() there. Double-gated deliberately, so
+// neither guard alone is load-bearing.
+const DEV_PREFIX = "/dev/";
+
+function isDevPreview(pathname: string): boolean {
+  return process.env.NODE_ENV !== "production" && pathname.startsWith(DEV_PREFIX);
+}
+
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const isPublic = PUBLIC_ROUTES.has(pathname);
+  const devPreview = isDevPreview(pathname);
+  const isPublic = PUBLIC_ROUTES.has(pathname) || devPreview;
 
   useEffect(() => {
     if (status === "anonymous" && !isPublic) {
       router.replace("/login");
     }
-    if (status === "authenticated" && isPublic) {
+    // The dev preview is exempt from the bounce back to "/": it is reachable
+    // whether or not a session exists, which is the point of it.
+    if (status === "authenticated" && isPublic && !devPreview) {
       router.replace("/");
     }
-  }, [status, isPublic, router]);
+  }, [status, isPublic, devPreview, router]);
+
+  // Full width and top-aligned — the preview is a long scrolling page, not the
+  // single centred card the login route wants.
+  if (devPreview) {
+    return <main className="min-h-screen p-10">{children}</main>;
+  }
 
   if (isPublic) {
     return <main className="flex min-h-screen items-center justify-center p-8">{children}</main>;

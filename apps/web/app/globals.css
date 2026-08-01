@@ -2,11 +2,79 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Design tokens — docs/design/design-tokens.md (N7-DESIGN v2, commit 1a4fc03).
+   This file is the ONLY place a raw hex appears. Components read the semantic
+   Tailwind names that resolve to these variables, so replacing an approximate
+   value with the real extracted one is a single-line change here (§8).
+
+   Every hex except the amber pair is an approximation pending confirmation
+   against the reference; amber is user-confirmed and locked. */
 :root {
   color-scheme: light;
+
+  /* --- T1 typography: two families, two registers --------------------- */
+  /* Set by next/font in layout.tsx; the fallbacks matter only if that fails. */
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  /* --- T3 semantic status palette -------------------------------------
+     Each semantic carries three values: an accent (borders, bars, dots —
+     UI components, where 3:1 suffices), an ink (text — AA or better), and a
+     surface. Contrast figures are ink-on-white, measured not estimated. */
+
+  /* success — COMPLETED, APPROVED, PASSED, confidence >= 0.75 */
+  --status-success: #bef264;
+  --status-success-ink: #3f6212; /* 7.08:1 */
+  --status-success-surface: #f7fee7;
+
+  /* failure — FAILED, REJECTED, confidence < 0.40 */
+  --status-failure: #9b2c1e;
+  --status-failure-ink: #9b2c1e; /* 7.57:1 */
+  --status-failure-surface: #fef2f2;
+
+  /* partial — PARTIALLY_COMPLETED, degraded, confidence 0.40-0.74.
+     The accent measures 3.19:1: fine for a border or a bar, NOT for text.
+     Text must use the ink. A label rendered in --status-partial is a defect. */
+  --status-partial: #d97706;
+  --status-partial-ink: #92400e; /* 7.09:1 on white, 6.37:1 on the surface */
+  --status-partial-surface: #fef3c7;
+
+  /* active — RUNNING, WAITING_FOR_PROVIDER, VALIDATING */
+  --status-active: #1e3a5f;
+  --status-active-ink: #1e3a5f; /* 11.50:1 */
+  --status-active-surface: #eff4f9;
+
+  /* pending — PENDING, QUEUED, PENDING_REVIEW */
+  --status-pending: #d4d4d8;
+  --status-pending-ink: #52525b; /* 7.73:1 */
+  --status-pending-surface: #f4f4f5;
+
+  /* muted — CANCELLED, TIMED_OUT. Differs from pending only in shade, which
+     is exactly why the status word is always rendered beside it (T3). */
+  --status-muted: #a1a1aa;
+  --status-muted-ink: #3f3f46; /* 10.44:1 */
+  --status-muted-surface: #fafafa;
+
+  /* --- T7 surface furniture -------------------------------------------- */
+  --rule: #e4e4e7; /* hairline section dividers */
+  --pill-surface: #f4f4f5; /* tag pills */
+  --eyebrow-ink: #71717a; /* mono uppercase section eyebrows */
+
+  /* --- T2 marketing register: the lime highlighter mark ----------------- */
+  /* Overview hero and empty states only, enforced by an e2e guard. */
+  --highlight: #bef264;
 }
 
 html,
 body {
   height: 100%;
+}
+
+body {
+  font-family: var(--font-display);
+}
+
+/* Numeric readouts must not reflow as digits change while polling (T1). */
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
