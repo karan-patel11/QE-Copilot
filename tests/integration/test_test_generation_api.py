@@ -223,8 +223,28 @@ def test_d2_unsupported_config_rejected_before_job_creation(
     become a row, a job, and a dispatched message.
     """
     _, headers = as_user(Role.QUALITY_ENGINEER)
-    before_requests = db.scalar(select(func.count()).select_from(TestGenerationRequest))
-    before_jobs = db.scalar(select(func.count()).select_from(Job))
+    org_id = project.organisation_id
+
+    # Scoped to this tenant, not global. A global count passes only while the
+    # table happens to be empty, which makes it a function of what ran before —
+    # the order-dependence ADR-0206's flakiness policy rules out.
+    def _counts() -> tuple[int, int, int]:
+        return (
+            db.scalar(
+                select(func.count())
+                .select_from(TestGenerationRequest)
+                .where(TestGenerationRequest.organisation_id == org_id)
+            )
+            or 0,
+            db.scalar(select(func.count()).select_from(Job).where(Job.organisation_id == org_id))
+            or 0,
+            db.scalar(
+                select(func.count()).select_from(ModelRun).where(ModelRun.organisation_id == org_id)
+            )
+            or 0,
+        )
+
+    before = _counts()
 
     response = app_client.post(
         f"{BASE}/requests",
@@ -237,9 +257,8 @@ def test_d2_unsupported_config_rejected_before_job_creation(
     assert envelope["error"]["code"] == "TEST_CONFIG_UNSUPPORTED"
     assert "accessibility" in envelope["error"]["message"].lower()
 
-    assert db.scalar(select(func.count()).select_from(TestGenerationRequest)) == before_requests
-    assert db.scalar(select(func.count()).select_from(Job)) == before_jobs
-    assert db.scalar(select(func.count()).select_from(ModelRun)) == 0
+    assert _counts() == before, "a refused configuration must write nothing at all"
+    assert before == (0, 0, 0), "the fixture tenant starts empty, so nothing means zero"
 
 
 def test_d2_invalid_config_value_is_also_refused_at_the_boundary(

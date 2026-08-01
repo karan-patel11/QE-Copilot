@@ -179,3 +179,96 @@ Environment: disposable `pgvector/pgvector:pg16` + `redis:7-alpine`, migrations
 
 294 = 293 at commit `0bdc4f4` plus C-4's new fixture. The count is genuine: every
 collected test executes, none are skipped.
+
+---
+
+# N6 — API
+
+Opened at N6 (ADR-0212 `9534f20`, routes `9cdc1f1`, tests `5fa63d7`).
+
+## C-7 — `user_roles` has no `project_id`, so "project scope" is organisation scope
+
+**Found while writing ADR-0212's RBAC section.** §15.1 L1270 specifies
+`user_roles` with `user_id`, `role_id`, **and `project_id`**. The shipped table
+has only the first two, and `Principal` carries no project set.
+
+**Consequence:** the N6 brief asks for create/approve "within their project scope
+only". That is not implementable in this phase. What N6 enforces instead is
+tenant isolation (every query filtered by `organisation_id`, cross-tenant rows
+404 rather than 403) plus project existence and ownership. **Within one
+organisation, any role holding `TEST_GENERATION_CREATE` may create a request
+against any project in that organisation.**
+
+**Status: open, pre-existing Phase 1 gap.** Closing it needs a migration adding
+`user_roles.project_id` and a `Principal` that carries project scope. Recorded so
+nobody reads the RBAC tests as proving a per-project guarantee they do not test.
+
+## C-8 — `jobs` has no idempotency key
+
+§14 L1218 lists "Idempotency key" among the fields every job carries. The `jobs`
+table has none, and **no idempotency mechanism existed anywhere in the codebase**
+before N6.
+
+Migration `0007` adds one to `test_generation_requests`, which is the unit a
+client actually retries — a replayed POST returns the original request instead of
+billing a second four-call generation. `jobs` is deliberately left alone: an
+unused column would imply a guarantee nothing enforces.
+
+**Status: open for `jobs`, closed for test-generation requests.**
+
+## C-9 — `_preflight` ran outside the failure handler, stranding failed requests
+
+**Found by the D5 test, and a real product defect.**
+`run_generation` called `_preflight` *before* its `try`, so any failure there —
+an unseeded registry, a drifted template, a refused config — failed the **job**
+while the **request row stayed at `QUEUED` forever**. A client polling that
+request would wait indefinitely on work that had definitively failed, and no
+`error_code` was ever written for D5 to surface.
+
+Compounding it, the job state machine has **no `QUEUED → FAILED` edge**, so even
+moving the call inside the `try` was not enough: `_mark_failed` would have raised
+`JobInvalidStateError` inside its own handler and recorded nothing.
+
+**Fixed.** Pre-flight now runs inside the `try`, and the `RUNNING` claim is
+committed *first*, before anything fallible, so `RUNNING → FAILED` is available
+to the failure handler.
+
+## C-10 — A global row-count assertion is an order-dependent assertion
+
+The first D2 test asserted `SELECT count(*) FROM model_runs == 0` — table-wide.
+It passed only while the table happened to be empty, and began failing the moment
+the gate-evidence runs put rows in it. Nothing about the code changed.
+
+**Fixed** by scoping every count to the fixture's organisation. Verified by
+running the full suite three times **against the polluted database**, rather than
+by re-cleaning it — a re-clean would have hidden the defect rather than proved
+the fix.
+
+Recorded because the pattern generalises: in a suite whose isolation comes from a
+per-test tenant, any assertion not filtered by `organisation_id` is a function of
+what ran before it.
+
+---
+
+## N6 task-gate table
+
+| # | Gate | Expected | Result |
+|---|---|---|---|
+| 1 | ADR before code | ADR-0212 committed with all six decisions before any route file | **PASS** — `9534f20`, six decisions with rationale; first route file written after |
+| 2 | Seven §16.3 routes | exactly L1623-1631, no more | **PASS** — 7/7 registered, verified by enumerating `app.routes` |
+| 3 | D1 dispatch ordering | request + job in one transaction, committed before dispatch | **PASS** — `psql`: request and job share `created_at` to the microsecond (Postgres `now()` is transaction-start time, so identical stamps *are* the same-transaction proof); first `model_runs` row 84 ms later; `ordering_holds=true` |
+| 4 | D2 boundary validation | 422, zero rows anywhere | **PASS** — `TEST_CONFIG_UNSUPPORTED`, requests/jobs/model_runs `1/1/4 → 1/1/4` unchanged |
+| 5 | D3 regenerate scope | codegen only, original `request_id`, other cases untouched | **PASS** — exactly one further `model_runs` row, `operation=pytest_codegen`, original `request_id`, regeneration `job_id`, sibling case untouched |
+| 6 | D4 prompt-version map | four-entry map, singular column not exposed | **PASS** — all four entries; `prompt_version` absent from every response |
+| 7 | D5 drift error code | distinct, non-retryable code reaches the client | **PASS** — `error_code=PROMPT_TEMPLATE_DRIFT`, distinct from `PROVIDER_*` and `INTERNAL_ERROR` |
+| 8 | D6 unmet kinds | reported field, never an error | **PASS** — `COMPLETED` with `unmet_requested_kinds=[boundary, security]`, `case_count=2`, nothing synthesised |
+| 9 | RBAC | a real 403 per denied role/route | **PASS** — 5/5 pasted with envelopes; positive half asserted for 3 author roles; matrix pinned |
+| 10 | Audit hook | actor, before/after, on approve/reject/regenerate | **PASS** — `human_status {before: PENDING_REVIEW, after: APPROVED}`, `actor_user_id` recorded |
+| 11 | Idempotency (§26.8) | replay returns the original, bills nothing further | **PASS** — 202 then 200, same `id` and `job_id`, one row |
+| 12 | Full lifecycle | 202 → real worker → COMPLETED, populated summary | **PASS** — `QUEUED → WAITING_FOR_PROVIDER → COMPLETED`, 0.15 s wall clock (§30 L2378 target <90 s), 2 cases, 4 `model_runs`, 4 prompt versions |
+| 13 | Tooling | ruff, ruff format, mypy --strict, pytest ×3 | **PASS** — exit 0 / 102 files formatted / 54 files clean / `320 passed` ×3 |
+
+**Measured numbers:** POST→COMPLETED wall clock **0.15 s** on `MockProvider`
+(the §30 L2378 <90 s target governs the real provider; N10 measures that).
+Request+job commit to first metering row: **84 ms**. Suite: **320 tests**, 0
+skipped, 0 xfailed.
