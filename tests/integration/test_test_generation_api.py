@@ -584,3 +584,68 @@ def test_full_lifecycle_post_to_completed_with_populated_summary(
     cases = app_client.get(f"{BASE}/requests/{created['id']}/tests", headers=headers).json()
     assert cases["total"] == 2
     assert cases["items"][0]["execution_status"] is None, "sandbox is P1 — never executed"
+
+
+def test_idempotent_replay_enqueues_no_second_job(
+    app_client: TestClient, db: Session, as_user: UserFactory, project: Project
+) -> None:
+    """§26.8 — the key must dedupe the *dispatch*, not merely the row.
+
+    Deduping the row while still dispatching would be a duplicate-billing bug:
+    the second job would run the full four-call pipeline against the same
+    request. The early return happens before both the insert and the dispatch,
+    so neither occurs.
+
+    Asserted on the ``jobs`` table rather than on the response, because the
+    response is what we are trying to corroborate.
+    """
+    _, headers = as_user(Role.QUALITY_ENGINEER)
+    keyed = {**headers, "Idempotency-Key": f"key-{uuid.uuid4().hex}"}
+    org_id = project.organisation_id
+
+    first = app_client.post(f"{BASE}/requests", json=_payload(project), headers=keyed)
+    second = app_client.post(f"{BASE}/requests", json=_payload(project), headers=keyed)
+
+    assert first.status_code == 202
+    assert second.status_code == 200
+
+    jobs = list(db.scalars(select(Job).where(Job.organisation_id == org_id)))
+    assert len(jobs) == 1, "a replay must not enqueue a second job"
+    assert str(jobs[0].id) == first.json()["job_id"] == second.json()["job_id"]
+    # One dispatch means one broker task id, not two.
+    assert jobs[0].celery_task_id is not None
+
+    requests = db.scalar(
+        select(func.count())
+        .select_from(TestGenerationRequest)
+        .where(TestGenerationRequest.organisation_id == org_id)
+    )
+    assert requests == 1
+
+
+def test_a_replayed_key_after_dispatch_failure_returns_the_failed_request(
+    app_client: TestClient, db: Session, as_user: UserFactory, project: Project
+) -> None:
+    """The documented limitation of key-on-the-request-row idempotency.
+
+    If the first attempt's dispatch failed, the row exists in ``FAILED`` and a
+    retry with the same key returns *that* row rather than starting fresh — the
+    client cannot retry under the same key. Pinned so the behaviour is a known
+    property rather than a surprise, and logged as C-13.
+    """
+    _, headers = as_user(Role.QUALITY_ENGINEER)
+    key = f"key-{uuid.uuid4().hex}"
+    keyed = {**headers, "Idempotency-Key": key}
+
+    created = app_client.post(f"{BASE}/requests", json=_payload(project), headers=keyed).json()
+    row = db.execute(
+        select(TestGenerationRequest).where(TestGenerationRequest.id == uuid.UUID(created["id"]))
+    ).scalar_one()
+    row.status = JobState.FAILED.value
+    row.error_code = "SERVICE_UNAVAILABLE"
+    db.commit()
+
+    replay = app_client.post(f"{BASE}/requests", json=_payload(project), headers=keyed)
+    assert replay.status_code == 200
+    assert replay.json()["id"] == created["id"]
+    assert replay.json()["status"] == "FAILED"

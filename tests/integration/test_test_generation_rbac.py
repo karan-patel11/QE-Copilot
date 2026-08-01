@@ -182,3 +182,45 @@ def test_the_role_matrix_matches_the_adr() -> None:
     assert not (author & ROLE_PERMISSIONS[Role.PLATFORM_ENGINEER])
     assert Permission.TEST_GENERATION_READ in ROLE_PERMISSIONS[Role.PLATFORM_ENGINEER]
     assert author <= ROLE_PERMISSIONS[Role.ADMINISTRATOR]
+
+
+def test_the_read_routes_require_a_role_not_merely_authentication(
+    app_client: TestClient, as_user: UserFactory
+) -> None:
+    """Both GET routes are guarded by ``TEST_GENERATION_READ``.
+
+    Every one of the five platform roles holds it, so in practice any role can
+    read — but an authenticated user holding *no* role is refused. Asserted
+    because "authenticated" and "authorised" are different guarantees and the
+    distinction was previously only implicit in the dependency wiring.
+    """
+    _, headers = as_user()  # a real, active user with zero roles
+
+    for path in (
+        f"{BASE}/requests/{uuid.uuid4()}",
+        f"{BASE}/requests/{uuid.uuid4()}/tests",
+    ):
+        response = app_client.get(path, headers=headers)
+        assert response.status_code == 403, f"{path} must require a role: {response.text}"
+        assert response.json()["error"]["code"] == "FORBIDDEN"
+        assert Permission.TEST_GENERATION_READ.value in response.json()["error"]["message"]
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        Role.ENGINEER,
+        Role.QUALITY_ENGINEER,
+        Role.QE_LEAD,
+        Role.PLATFORM_ENGINEER,
+        Role.ADMINISTRATOR,
+    ],
+    ids=lambda r: r.value,
+)
+def test_every_platform_role_can_read(
+    app_client: TestClient, as_user: UserFactory, role: Role
+) -> None:
+    """The positive half: 404 (not 403) proves the read guard passed."""
+    _, headers = as_user(role)
+    response = app_client.get(f"{BASE}/requests/{uuid.uuid4()}", headers=headers)
+    assert response.status_code == 404, response.text

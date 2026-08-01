@@ -203,6 +203,30 @@ against any project in that organisation.**
 `user_roles.project_id` and a `Principal` that carries project scope. Recorded so
 nobody reads the RBAC tests as proving a per-project guarantee they do not test.
 
+### As-built scope, stated without hedging
+
+> **Project-level RBAC is NOT enforced. Any user with a qualifying role in the
+> organisation can act on any project's test-generation requests and generated
+> tests, regardless of project ownership, pending C-7
+> (`user_roles.project_id`).**
+
+**Owner: N9** (the security node). It is the node that reviews authorisation
+boundaries, and closing this needs both a migration and a `Principal` change —
+more than N7 (frontend) should carry.
+
+### What the read routes actually require
+
+Both `GET /test-generation/requests/{id}` and
+`GET /test-generation/requests/{request_id}/tests` are guarded by
+`Permission.TEST_GENERATION_READ` — a **role**, not merely authentication. All
+five platform roles hold it, so in practice any role can read; an authenticated
+user holding *no* role is refused with 403.
+
+This was previously implicit in the dependency wiring and untested. Now covered
+by `test_the_read_routes_require_a_role_not_merely_authentication` (roleless user
+→ 403 on both routes) and `test_every_platform_role_can_read` (all five roles →
+404 rather than 403, which is what proves the guard passed).
+
 ## C-8 — `jobs` has no idempotency key
 
 §14 L1218 lists "Idempotency key" among the fields every job carries. The `jobs`
@@ -272,3 +296,112 @@ what ran before it.
 (the §30 L2378 <90 s target governs the real provider; N10 measures that).
 Request+job commit to first metering row: **84 ms**. Suite: **320 tests**, 0
 skipped, 0 xfailed.
+
+---
+
+# N6-CLOSEOUT — pre-N7 verification
+
+Opened at N6-CLOSEOUT, re-deriving N6's claims from source rather than from its
+scorecard.
+
+## C-11 — Idempotency dedupes the dispatch, not merely the row (verified, no bug)
+
+**The question:** does migration `0007`'s key prevent a second *Celery dispatch*,
+or only a second database row? Deduping the row while still dispatching would be
+a **duplicate-billing bug** — the second job would run the whole four-call
+pipeline against the same request.
+
+**Verified with no worker consuming**, so the broker queue is directly
+observable:
+
+```
+POST #1 → 202  id=7e588a4c…  job_id=c9bdacd1…
+POST #2 → 200  id=7e588a4c…  job_id=c9bdacd1…     (same row, same job)
+
+ request_rows | job_rows | model_run_rows
+            1 |        1 |              0
+celery broker queue depth: 1
+```
+
+**One broker message.** The early return happens before both the insert and the
+dispatch, so neither occurs on the replay. **No duplicate-billing bug.**
+
+The database invariant behind it, proven independently by two raw inserts:
+
+```
+INSERT 0 1
+ERROR:  duplicate key value violates unique constraint
+        "uq_test_generation_requests_idempotency"
+DETAIL:  Key (organisation_id, idempotency_key)=(b6e44ce6…, RACEKEY) already exists.
+```
+
+…and the index is partial, so rows without a key do not collide with each other.
+
+**Status: closed.** Covered permanently by
+`test_idempotent_replay_enqueues_no_second_job`, which asserts on the `jobs`
+table rather than on the response body.
+
+## C-12 — The *concurrent* idempotency race is unproven
+
+**Attempted and not completed.** The sequential replay above is proven. The
+genuinely risky path in a read-then-write dedup is two POSTs racing the existence
+check: both find nothing, both insert, and the unique index rejects one at
+COMMIT.
+
+An end-to-end probe firing four simultaneous POSTs through `TestClient` threads
+**hung and was killed at ten minutes**. No backends were left waiting on locks
+afterwards (`pg_stat_activity` reported `0 backends, 0 waiting on locks`), which
+points at the test harness — `TestClient` runs its own event-loop portal per
+thread over a shared async engine — rather than at a product deadlock. But that
+is an inference, and it is not proof.
+
+**What is established:** the partial unique index rejects the duplicate row
+(shown above), and dispatch happens strictly *after* commit, so a racer that
+loses the insert cannot reach `send_task`. That makes double-dispatch
+structurally implausible.
+
+**What is not established:** that a concurrent replay returns a sensible status
+rather than a 500, and that the losing request is cleaned up rather than left
+half-written.
+
+**Status: open. Owner: N10** (reliability), which owns concurrency and failure
+behaviour and will already be building load probes. It does **not** block N7:
+the frontend issues one request per user action and has no concurrent-replay path.
+
+## C-13 — A key replayed after a dispatch failure returns the failed request forever
+
+Keying idempotency on the request row means the row *is* the record of the
+attempt. If the first attempt's dispatch failed, that row exists in `FAILED`, and
+a client retrying under the same key gets the failed row back — it can never
+retry under that key.
+
+This is a real limitation of the chosen design, not a defect in it: the
+alternative (deleting the row so the key frees up) would erase the evidence that
+the attempt happened, which ADR-0212 Decision 1 explicitly refuses for dispatch
+failures.
+
+**Status: open, documented. Owner: N7** — the frontend needs to surface "this
+request failed; submit a new one" rather than offering a retry that will return
+the same failed row. Pinned by
+`test_a_replayed_key_after_dispatch_failure_returns_the_failed_request`.
+
+## Correction to the N6 scorecard
+
+The scorecard's prose showed **five** gate rows under "Gate evidence" while the
+committed table has **thirteen**. The thirteen-row table in this document is the
+authoritative one; the scorecard was summarising, and did not say so. Same class
+of error as C-1 — a partial view presented without being labelled partial.
+
+**D1–D6 mapping to gate rows and isolated tests**, verified from source:
+
+| Decision | Gate row | Isolated named test(s) |
+|---|---|---|
+| D1 | 3 | `test_d1_request_and_job_are_committed_in_one_transaction_before_dispatch`, `test_d1_metering_foreign_keys_resolve_because_the_rows_were_durable_first` |
+| D2 | 4 | `test_d2_unsupported_config_rejected_before_job_creation`, `test_d2_invalid_config_value_is_also_refused_at_the_boundary` |
+| D3 | 5 | `test_d3_regenerate_reruns_codegen_only_and_attributes_to_the_original_request` |
+| D4 | 6 | `test_d4_response_returns_the_four_entry_prompt_version_map`, `test_d4_prompt_versions_is_an_empty_map_before_any_stage_runs` |
+| D5 | 7 | `test_d5_template_drift_surfaces_a_distinct_non_retryable_error_code` |
+| D6 | 8 | `test_d6_unmet_kinds_reported_not_errored` |
+
+All six have both a gate row and at least one isolated `test_dN_*` function. **D4
+and D6 are not gaps** — each has a dedicated row and a dedicated test.
